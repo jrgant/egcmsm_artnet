@@ -172,3 +172,7 @@ freq(avs$pnua_12m) %>% print
 
 # single-contact anal partners
 freq(avs$m_mp12instanum2) %>% print
+
+# %% Write Cleaned Dataset ---------------------------------------------------
+
+write.csv(avs, "artnet-cleaned.csv", row.names = F)
