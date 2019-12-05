@@ -43,6 +43,7 @@ names(av) %>% sort %>% print
 # How many variables are haven-labelled?
 sapply(av, function(x) is.labelled(x)) %>% table
 
+
 # %% Select Variables --------------------------------------------------------
 
 varselect <- c(
@@ -65,7 +66,7 @@ varselect <- c(
   "prep_stirectfreq",
   "prep_stiurethfreq",
   "stireg",
-  "stitestfreq",
+  names(av)[grep("stitest", names(av))],
   # Partner variables
   names(av)[grep("part", names(av))],
   # Sexual behavior
@@ -84,6 +85,7 @@ glimpse(avs)
 
 # view summary of data frame
 dfSummary(avs, graph.col = F) %>% print
+
 
 # %% HIV Status --------------------------------------------------------
 
@@ -115,6 +117,91 @@ freq(avs$hiv) %>% print
 # check
 avs[, .N, keyby = .(hiv, artnetrcntrslt, artnetevrpos, artnetstatus)] %>%
   print
+
+# %% PrEP Status --------------------------------------------------------------
+
+freq(avs$prep_revised) %>% print
+
+avs[prep_revised == 1, freq(artnetprep_current)] %>%
+  print
+
+avs[, an_prep_current := ifelse(
+  !is.na(prep_revised) & is.na(artnetprep_current),
+  0, artnetprep_current
+  )]
+
+freq(avs$an_prep_current) %>% print
+
+# %% STI Testing Variables (Ever PrEP Users) -----------------------------------
+
+avs[, .N, .(prep_revised, artnetprep_current)]
+
+ep <- avs[prep_revised == 1]
+
+ep[, .N, keyby = .(prep_stithroatfreq, prep_stiurethfreq, prep_stirectfreq)]
+ep[, prep_any_missing_stifreq := ifelse(
+       is.na(prep_stithroatfreq + prep_stiurethfreq + prep_stirectfreq), 1, 0)]
+
+ep[, .N, keyby = .(prep_any_missing_stifreq,
+                   prep_stiurethfreq,
+                   prep_stithroatfreq,
+                   prep_stirectfreq)]
+
+ep[, .N, keyby = prep_any_missing_stifreq][, p := N / sum(N)] %>% print
+
+# Non-PrEP-related STI Tests among Ever PrEP Users
+
+ep[, .N, keyby = stitest_2yr_prep]
+
+# check extreme response
+ep[stitest_2yr_prep == 2000, .(id, age, race.cat,
+                               stitest_2yr_prep,
+                               stitest_2yr_sympt_prep,
+                               stitest_2yr_notif_prep)]
+
+# set extreme value to missing (rationale: impossible value)
+avs$stitest_2yr_prep[avs$stitest_2yr_prep == 2000] <- NA
+avs[prep_revised == 1, .N, keyby = stitest_2yr_prep]
+
+# create categorical verstion of stitest_2yr_prep
+avs[, stitest_2yr_pcat := ifelse(stitest_2yr_prep >= 7, "7+", stitest_2yr_prep)]
+avs[prep_revised == 1, .N, keyby = stitest_2yr_pcat]
+
+# proportion of STI tests sought due to presence of symptoms
+avs[!is.na(stitest_2yr_prep), .N, keyby = stitest_2yr_sympt_prep]
+avs[, stitest_2yr_psympt_pct := stitest_2yr_sympt_prep / stitest_2yr_prep]
+
+
+# %% STI Testing Variables (Never PrEP Users) ----------------------------------
+
+avs[prep_revised != 1 & !is.na(prep_revised), freq(stitest_2yr)]
+
+# check extreme response
+avs[stitest_2yr == 2015, .(id, age, race.cat,
+                           stitest_2yr,
+                           stitest_2yr_sympt,
+                           stitest_2yr_notif)]
+
+# set extreme value to missing (rationale: impossible value)
+avs$stitest_2yr[avs$stitest_2yr == 2015] <- NA
+avs[prep_revised != 1, .N, keyby = stitest_2yr]
+
+# create categorical version of stitest_2yr
+avs[, stitest_2yr_cat := ifelse(stitest_2yr >= 7, "7+", stitest_2yr)]
+avs[prep_revised != 1, .N, keyby = stitest_2yr_cat]
+
+# proportion of STI tests sought due to presence of symptoms
+avs[prep_revised != 1, freq(stitest_2yr_sympt)]
+
+avs[, stitest_2yr_sympt_pct := stitest_2yr_sympt / stitest_2yr]
+
+# regular STI testing
+avs[prep_revised != 1 & stitest_2yr > 0, freq(stireg)] %>% print
+
+avs[stireg == 1, freq(stitestfreq)] %>% print
+avs[, stitestfreq_cat := ifelse(stitestfreq %in% c(NA, 9), NA, stitestfreq)]
+avs[stireg == 1, freq(stitestfreq_cat)]
+
 
 # %% Sexual Behavior Variables ------------------------------------------------
 
@@ -173,6 +260,7 @@ freq(avs$pnua_12m) %>% print
 # single-contact anal partners
 freq(avs$m_mp12instanum2) %>% print
 
+
 # %% Write Cleaned Dataset ---------------------------------------------------
 
-write.csv(avs, "artnet-cleaned.csv", row.names = F)
+fwrite(avs, "artnet-cleaned.csv", row.names = F)
