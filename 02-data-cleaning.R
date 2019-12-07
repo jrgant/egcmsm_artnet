@@ -18,6 +18,9 @@ pacman::p_load(
   rms
 )
 
+# View all variables
+names(av) %>% sort %>% print
+
 # View PrEP-related variables
 names(av)[grep("prep", names(av))] %>% sort %>% print
 
@@ -76,10 +79,7 @@ varselect <- c(
 print(varselect)
 
 # select variable subset
-avs <- av[, ..varselect] %>%
-  # fix duplicate name error
-  as_tibble(.name_repair = "minimal") %>%
-  setDT
+avs <- av[, ..varselect]
 
 glimpse(avs)
 
@@ -100,7 +100,7 @@ freq(avs$artnetevrpos) %>% print
 # Logic: if artnetevrpos == 1 & artnetrcntrslt != 2
 freq(avs$artnetstatus) %>% print
 
-avs[, .N, .(artnetrcntrslt, artnetevrpos, artnetstatus)] %>% print
+avs[, .N, keyby = .(artnetrcntrslt, artnetevrpos, artnetstatus)] %>% print
 
 # create HIV status variable
 avs[, hiv := case_when(
@@ -110,8 +110,8 @@ avs[, hiv := case_when(
     artnetrcntrslt == 1 ~ 0,
     TRUE ~ NA_real_)]
 
-# drop inherited label
-label(avs$hiv) <- ""
+# set label
+label(avs$hiv) <- "Derived HIV status"
 freq(avs$hiv) %>% print
 
 # check
@@ -134,7 +134,7 @@ freq(avs$an_prep_current) %>% print
 
 # %% STI Testing Variables (Ever PrEP Users) -----------------------------------
 
-avs[, .N, .(prep_revised, artnetprep_current)]
+avs[, .N, .(prep_revised, artnetprep_current)] %>% print
 
 ep <- avs[prep_revised == 1]
 
