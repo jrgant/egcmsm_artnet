@@ -1,207 +1,198 @@
-# %% PrEP Variables ----------------------------------------------------------
+# %% Setup -------------------------------------------------------------------
 
-prepvars <- varselect[grepl("prep", varselect)]
+pacman::p_load(
+  data.table,
+  ggplot2,
+  ggthemes,
+  ggridges,
+  magrittr,
+  summarytools,
+  dplyr,
+  haven
+)
 
-prepl <- lapply(set_names(prepvars, prepvars), function(x) {
-  avs[artnetprep_current == 1 | prep_revised == 1, .N,
-        keyby = x][, p := N / sum(N)]
-  })
+theme_set(theme_classic())
 
-prepl
+an <- fread("artnet-cleaned.csv")
+head(an)
 
-# %% Descriptive Statistics and Derived Variables ----------------------------
+anyDuplicated(names(an))
+
+# %% PrEP ----------------------------------------------------------------------
+
+an[prep_revised == 1, freq(prep_hivtestfreq)]   %>% print
+an[prep_revised == 1, freq(prep_stithroatfreq)] %>% print
+an[prep_revised == 1, freq(prep_stirectfreq)]   %>% print
+an[prep_revised == 1, freq(prep_stiurethfreq)]  %>% print
+
+# %% Descriptive Statistics and Derived Variables ------------------------------
 
 # Age
-avs[, descr(age)] %>% print
+an[, descr(age)] %>% print
+plot(density(an$age))
 
-
-avs[, freq(artnetevertest)] %>% print
+an[, freq(artnetevertest)] %>% print
 
 
 # Create and view race/ethnicity variable
-avs[, .N, by = .(race, race.cat)] %>% print
-raceth_lookup <- c("white",
-                   "other",
-                   "black",
-                   "other",
-                   "other",
-                   "other",
-                   "other")
+an[, .N, by = .(race, race.cat)][order(race.cat)] %>% print
 
-names(raceth_lookup) <- unique(avs$race)
+freq(an$race.cat) %>% print
 
-avs[, raceth := ifelse(race.cat == "hispanic",
-                         "hispanic",
-                         raceth_lookup[race]
-                         )]
-
-# .. check race/ethnicity coding
-avs[, .N, .(race, race.cat, raceth)] %>%
-  .[, pct := N / sum(N) * 100] %>%
-  .[order(race, race.cat, raceth)] %>%
-  print
-
-freq(avs$raceth) %>% print
 
 
 # %% HIV by Demo --------------------------------------------------------------
 
-freq(avs$hiv)
-avs[, stby(hiv, raceth, freq)]
+# .. Race
+freq(an$hiv) %>% print
+an[, stby(hiv, race.cat, freq)]
 
-# HIV status by race, age
-library(rms)
 
-avhiv <- avs[!is.na(hiv), .(id, age, raceth, hiv)]
-print(avhiv)
-nrow(avhiv)
+# .. Age
+hiv_by_age <- an %>%
+  .[!is.na(hiv)] %>%
+  .[, .(.N, hiv_n = sum(hiv)), keyby = age]
 
-bootit <- function(n) avhiv[sample(1:n, replace = T)]
+print(hiv_by_age)
 
-hiv_bsamps <- replicate(n = 10000, simplify = F,
-                    expr = do.call("bootit",
-                                   args = list(n = nrow(avhiv))))
+hiv_by_age_sum <- cbind(hiv_by_age,
+      hiv_by_age[, Hmisc::binconf(x = hiv_n, n = N, return.df = T)])
 
-print(hiv_bsamps[1:5])
+print(hiv_by_age_sum)
 
-testix <- function(bsamps, dep, ind, dat, fam = "binomial",
-                   keepreg = FALSE) {
+hiv_by_age_sum %>%
+  ggplot(aes(x = age, y = PointEst)) +
+  geom_point() +
+  geom_line() +
+  geom_ribbon(aes(ymin = Lower, ymax = Upper), alpha = 0.3)
 
-  fml1 <- as.formula(paste(dep, "~", paste(ind, collapse = "+")))
-  fml2 <- as.formula(paste(dep, "~", paste(ind, collapse = "*")))
+fit <- glm(hiv ~ age * race, data = an, family = "binomial")
+summary(fit)
 
-  fit1 <- glm(fml1, data = dat, family = fam)
-  fit2 <- glm(fml2, data = dat, family = fam)
 
-  lrt <- lrtest(fit1, fit2)
+# %% STI Testing by Demo - Never PrEP Takers ----------------------------------
 
-  if (keepreg) {
-    list(fit1, fit2, lrt)
-  } else {
-    list(lrt)
-  }
+an[prep_revised == 0, stby(stitest_2yr_cat, race.cat, freq)]
+
+an[prep_revised == 0, stby(stitest_2yr_sympt_pct, race.cat, freq)]
+
+an[prep_revised == 0, stby(stitestfreq_cat, race.cat, freq)]
+
+
+# Overall number of STI tests sought due to presence of symptoms
+
+stisympt <- an[
+  prep_revised == 0 & !is.na(stitest_2yr) & !is.na(stitest_2yr_sympt),
+  .(id, stitest_2yr, stitest_2yr_sympt)
+  ]
+
+bootsti <- function(data, n) {
+  sampdat <- data[sample(1:n, replace = T)]
+  anlysdat <- sampdat[, .(.N,
+                        pct_sympt = sum(stitest_2yr_sympt) / sum(stitest_2yr))]
+  anlysdat
 }
 
-hiv_lrt <- lapply(hiv_bsamps, function(x) {
-  testix(dat = x, dep = "hiv", ind = c("raceth", "age"))
-})
 
-hiv_lrt_p <- lapply(hiv_lrt, function(x) x[[1]]$stats[["P"]]) %>% unlist
-print(descr(hiv_lrt_p))
-summary(hiv_lrt_p)
-hiv_aic <- lapply(hiv_bsamps, function(x) {
-  fit <- glm("hiv ~ raceth * age", data = x, family = "binomial")
-  MASS::stepAIC(fit)
-  })
+set.seed(1971)
+bootdist_stisympt <- replicate(
+  n = 10000,
+  expr = do.call("bootsti",
+                 args = list(data = stisympt,
+                             n = nrow(stisympt))),
+  simplify = F) %>%
+  rbindlist
 
-hiv_aic_varsets <- lapply(hiv_aic, function(x) coef(x))
+estlabs <- c("Prob", "LL95", "UL95")
 
+sti_sympt_prob_param <-
+    c(stisympt[, sum(stitest_2yr_sympt) / sum(stitest_2yr)],
+    quantile(bootdist_stisympt$pct_sympt, c(0.025, 0.975)))
 
-predhra <- expand.grid(raceth = unique(avs$raceth),
-                       age = unique(avs$age)) %>%
-                       setDT %>%
-                       .[order(raceth, age)]
+names(sti_sympt_prob_param) <- estlabs
 
+sti_sympt_prob_param
 
-hiv_preds <- lapply(hiv_bsamps)
-predhra$hiv_hat <- predict(object = hra,
-                           newdata = predhra,
-                           type = "response")
+# %% STI Testing by Demo - Ever PrEP Takers ----------------------------------
 
-print(predhra)
+# STI tests sought:
+#  - while on PrEP
+#  - outside of a regular PrEP follow-up visit
 
-ggplot(predhra) +
-  geom_line(
-    aes(x = age, y = hiv_hat, color = raceth),
-    size = 1
-    ) +
-  scale_color_viridis_d() +
-  theme_clean()
-
-# %% PrEP by Demo -------------------------------------------------------------
-
-freq(avs$prep_revised) %>% print
-
-
-avs[prep_revised == 1, freq(artnetprep_current)] %>%
-  print
-
-avs[, an_prep_current := ifelse(
-  !is.na(prep_revised) & is.na(artnetprep_current),
-  0, artnetprep_current
+stisympt_p <- an[
+  prep_revised == 1 &
+  !is.na(stitest_2yr_prep) &
+  !is.na(stitest_2yr_sympt_prep),
+  .(id,
+    stitest_2yr = stitest_2yr_prep,
+    stitest_2yr_sympt = stitest_2yr_sympt_prep
   )]
 
-freq(avs$an_prep_current)
+print(stisympt_p)
 
-# %% Simple Summaries by Race/ethnicity ---------------------------------------
+set.seed(1971)
+bootdist_stisympt_p <- replicate(
+  n = 10000,
+  expr = do.call("bootsti",
+                 args = list(data = stisympt_p,
+                             n = nrow(stisympt_p))),
+  simplify = F) %>%
+  rbindlist
 
-print(sort(names(avs)))
+sti_sympt_prob_prep_param <-
+  c(stisympt_p[, sum(stitest_2yr_sympt) / sum(stitest_2yr)],
+    quantile(bootdist_stisympt_p$pct_sympt, c(0.025, 0.975)))
 
-# .. continuous variables
-avs[, stby(age, raceth, descr)] %>%
-  print
+names(sti_sympt_prob_prepusers_param) <- estlabs
+sti_sympt_prob_prepusers_param
 
-avs[, stby(zap_labels(stitestfreq), raceth, descr)] %>%
-  print
 
-# Source for raincloud plots:
+# STI test frequency at PrEP follow-up visits
 
-# Allen M, Poggiali D, Whitaker K, Marshall TR, Kievit RA. Raincloud plots: a
-# multi-platform tool for robust data visualization. Wellcome Open Res
-# 2019;4:63. doi:10.12688/wellcomeopenres.15191.1.
+# .. Throat
+an[prep_revised == 1, freq(prep_stithroatfreq)] %>% print
 
-# @DEV 2019-10-15: Make a raincloud plot function
+# .. Anus
+an[prep_revised == 1, freq(prep_stirectfreq)] %>% print
 
-make_it_rain <- function(data, xvar, yvar, fillvar, colvar,
-                         groupvar = NULL, legend_title) {
-   avs %>%
-     ggplot(aes(x = !!xvar,
-                y = !!yvar,
-                fill = !!fillvar,
-                color = !!colvar,
-                group = !!groupvar)) +
-     geom_density_ridges(scale = 0.7, alpha = 0.2) +
-     geom_point(position = position_jitter(width = 0.4, height = 0.1),
-                size = 0.25) +
-     scale_color_viridis_d() +
-     scale_fill_viridis_d(name = legend_title) +
-     guides(color = F) +
-     theme_ridges() +
-     theme(panel.grid.major.y = element_blank(),
-           axis.ticks.y = element_blank())
+# .. Urine or genital swab
+an[prep_revised == 1, freq(prep_stiurethfreq)] %>% print
+
+
+# %% Mean (12-month) Degree by Race/Ethnicity ----------------------------------
+
+rc <- unique(an$race.cat)
+p <- ggplot(an, aes(group = race.cat))
+
+
+sapply(rc, function(x) an[race.cat == x, summary(pnoa_12m)])
+p + geom_boxplot(aes(y = pnoa_12m))
+
+sapply(rc, function(x) an[race.cat == x, summary(pnua_12m)])
+p + geom_boxplot(aes(y = pnua_12m))
+
+sapply(rc, function(x) an[race.cat == x, summary(pna_12m)])
+p + geom_boxplot(aes(y = pna_12m))
+
+# %% Mean Degree by Age ---------------------------------------------
+
+plotdeg_by_age <- function(yvar) {
+
+  ggplot(an, aes(x = age, y = !!yvar)) +
+    geom_point(size = 0.7) +
+    geom_smooth()
+
 }
 
-make_it_rain(
-  data = avs,
-  xvar = quo(age),
-  yvar = quo(raceth),
-  fillvar = quo(raceth),
-  colvar = quo(raceth),
-  groupvar = quo(raceth),
-  legend_title = "Race/ethnicity"
-)
 
-make_it_rain(
-  data = avs,
-  xvar = quo(zap_labels(stitestfreq)),
-  yvar = quo(raceth),
-  fillvar = quo(raceth),
-  colvar = quo(raceth),
-  groupvar = quo(raceth),
-  legend_title = "Race/ethnicity"
-)
+plotdeg_by_age(quo(pnoa_12m)) +
+  labs(title = "Oral or Anal Partners (12 months)")
 
+plotdeg_by_age(quo(pna_12m)) +
+  labs(title = "Anal-only Partners (12 months)")
 
-# categorical variables
-avs[, stby(stireg, raceth, freq)] %>% print
-avs[, stby(artnetevertest, raceth, freq)]
-avs[, stby(stitestfreq, raceth, freq)]
-avs[, stby(stitest_2yr, raceth, freq)]
-avs[, stby(, raceth, freq)]
-avs[, stby(, raceth, freq)]
+plotdeg_by_age(quo(pnua_12m)) +
+  labs(title = "Unprotected Anal Partners (12 months)")
 
-
-by_race <- c(varselect, "raceth")
-avs[, ..by_race]
-
-stby(artnetevertest)
+plotdeg_by_age(quo(pn_ongoing)) +
+  labs(title = "Ongoing Partners (Oral or Anal)")
