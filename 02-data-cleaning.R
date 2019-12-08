@@ -71,20 +71,19 @@ varselect <- c(
   "stireg",
   names(av)[grep("stitest", names(av))],
   # Partner variables
-  names(av)[grep("part", names(av))],
+  names(av)[grep("part", names(av), perl = T)],
   # Sexual behavior
   names(av)[grep("^m_|mmconc", names(av))]
-  )
+  ) %>%
+  # limit to unique because a couple of the grep returns overlap 
+  unique
 
-print(varselect)
+
+varselect %>% sort %>% print
 
 # select variable subset
 avs <- av[, ..varselect]
-
 glimpse(avs)
-
-# view summary of data frame
-dfSummary(avs, graph.col = F) %>% print
 
 
 # %% HIV Status --------------------------------------------------------
@@ -262,5 +261,5 @@ freq(avs$m_mp12instanum2) %>% print
 
 
 # %% Write Cleaned Dataset ---------------------------------------------------
-
+print(sort(names(avs)))
 fwrite(avs, "artnet-cleaned.csv", row.names = F)
