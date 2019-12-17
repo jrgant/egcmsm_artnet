@@ -60,6 +60,8 @@ varselect <- c(
   "artnetrcntrslt",
   "artnetevrpos",
   "artnetstatus",
+  "hiv2",
+  "hiv3",
   # PrEP
   "prep_revised",
   "artnetprep_current",
@@ -73,9 +75,10 @@ varselect <- c(
   # Partner variables
   names(av)[grep("part", names(av), perl = T)],
   # Sexual behavior
-  names(av)[grep("^m_|mmconc", names(av))]
+  names(av)[grep("^m_|mmconc", names(av))],
+  "cuml.pnum"
   ) %>%
-  # limit to unique because a couple of the grep returns overlap 
+  # limit to unique because a couple of the grep returns overlap
   unique
 
 
@@ -114,8 +117,13 @@ label(avs$hiv) <- "Derived HIV status"
 freq(avs$hiv) %>% print
 
 # check
-avs[, .N, keyby = .(hiv, artnetrcntrslt, artnetevrpos, artnetstatus)] %>%
-  print
+avs[, .N, keyby = .(hiv, artnetrcntrslt, artnetevrpos, artnetstatus)]
+
+# compare to original HIV variables (hiv2, hiv3)
+
+freq(avs$hiv2) %>% print
+
+freq(avs$hiv3) %>% print
 
 # %% PrEP Status --------------------------------------------------------------
 
@@ -146,11 +154,12 @@ ep[, .N, keyby = .(prep_any_missing_stifreq,
                    prep_stithroatfreq,
                    prep_stirectfreq)]
 
-ep[, .N, keyby = prep_any_missing_stifreq][, p := N / sum(N)] %>% print
+freq(ep$prep_any_missing_stifreq) %>% print
 
 # Non-PrEP-related STI Tests among Ever PrEP Users
 
-ep[, .N, keyby = stitest_2yr_prep]
+freq(ep$stitest_2yr_prep) %>% print
+
 
 # check extreme response
 ep[stitest_2yr_prep == 2000, .(id, age, race.cat,
@@ -173,7 +182,7 @@ avs[, stitest_2yr_psympt_pct := stitest_2yr_sympt_prep / stitest_2yr_prep]
 
 # %% STI Testing Variables (Never PrEP Users) ----------------------------------
 
-avs[prep_revised != 1 & !is.na(prep_revised), freq(stitest_2yr)]
+avs[prep_revised != 1 & !is.na(prep_revised), freq(stitest_2yr)] %>% print
 
 # check extreme response
 avs[stitest_2yr == 2015, .(id, age, race.cat,
@@ -187,10 +196,10 @@ avs[prep_revised != 1, .N, keyby = stitest_2yr]
 
 # create categorical version of stitest_2yr
 avs[, stitest_2yr_cat := ifelse(stitest_2yr >= 7, "7+", stitest_2yr)]
-avs[prep_revised != 1, .N, keyby = stitest_2yr_cat]
+avs[prep_revised != 1, .N, keyby = stitest_2yr_cat] %>% print
 
 # proportion of STI tests sought due to presence of symptoms
-avs[prep_revised != 1, freq(stitest_2yr_sympt)]
+avs[prep_revised != 1, freq(stitest_2yr_sympt)] %>% print
 
 avs[, stitest_2yr_sympt_pct := stitest_2yr_sympt / stitest_2yr]
 
@@ -199,7 +208,7 @@ avs[prep_revised != 1 & stitest_2yr > 0, freq(stireg)] %>% print
 
 avs[stireg == 1, freq(stitestfreq)] %>% print
 avs[, stitestfreq_cat := ifelse(stitestfreq %in% c(NA, 9), NA, stitestfreq)]
-avs[stireg == 1, freq(stitestfreq_cat)]
+avs[stireg == 1, freq(stitestfreq_cat)] %>% print
 
 
 # %% Sexual Behavior Variables ------------------------------------------------
@@ -210,15 +219,11 @@ avs[stireg == 1, freq(stitestfreq_cat)]
 names(av)[grep("m_", names(av))] %>% sort %>% print
 
 # .. Oral and Anal Partners
-avs[, .N, .(m_mp12oanum)]
-boxplot(avs$m_mp12oanum)
 
-# drop one impossible partner number
-avs[, pnoa_12m := ifelse(m_mp12oanum > 7000, NA, m_mp12oanum)]
-boxplot(avs$pnoa_12m)
+avs[, .N, keyby = cuml.pnum] %>% print
+boxplot(avs$cuml.pnum)
 
-# compare original with derived
-cbind(orig = summary(avs$m_mp12oanum), new = summary(avs$pnoa_12m)) %>% print
+avs[, pnoa_12m := cuml.pnum]
 
 # .. Ongoing Partnerships
 cbind(
@@ -236,7 +241,9 @@ summary(avs$pn_ongoing)
 
 freq(avs$pn_ongoing) %>% print
 
-# .. Anal-only Partners
+boxplot(avs$pn_ongoing)
+
+# .. Anal Partners
 
 # all anal partners
 freq(avs$m_mp12anum2) %>% print
@@ -247,6 +254,8 @@ avs[, pna_12m := ifelse(!is.na(m_mp12anum2_onepart),
 
 freq(avs$pna_12m) %>% print
 
+avs[, pna_12m := ai.part]
+
 # unprotected anal partners
 freq(avs$m_mp12uanum2) %>% print
 freq(avs$m_mp12uanum2_onepart) %>% print
@@ -256,10 +265,15 @@ avs[, pnua_12m := ifelse(!is.na(m_mp12uanum2_onepart),
 
 freq(avs$pnua_12m) %>% print
 
-# single-contact anal partners
+# one-time anal partners
 freq(avs$m_mp12instanum2) %>% print
 
+# .. Oral-only Partners
+
+avs[, pno_12m := pnoa_12m - pna_12m]
+freq(avs$pno_12m) %>% print
 
 # %% Write Cleaned Dataset ---------------------------------------------------
+
 print(sort(names(avs)))
 fwrite(avs, "artnet-cleaned.csv", row.names = F)
