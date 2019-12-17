@@ -63,6 +63,7 @@ print(hiv_by_age_sum)
 hiv_by_age_sum %>%
   ggplot(aes(x = age, y = PointEst)) +
   geom_point() +
+  geom_smooth(col = "red") +
   geom_line() +
   geom_ribbon(aes(ymin = Lower, ymax = Upper), alpha = 0.3)
 
@@ -113,6 +114,7 @@ names(sti_sympt_prob_param) <- estlabs
 
 sti_sympt_prob_param
 
+
 # %% STI Testing by Demo - Ever PrEP Takers ----------------------------------
 
 # STI tests sought:
@@ -143,8 +145,8 @@ sti_sympt_prob_prep_param <-
   c(stisympt_p[, sum(stitest_2yr_sympt) / sum(stitest_2yr)],
     quantile(bootdist_stisympt_p$pct_sympt, c(0.025, 0.975)))
 
-names(sti_sympt_prob_prepusers_param) <- estlabs
-sti_sympt_prob_prepusers_param
+names(sti_sympt_prob_prep_param) <- estlabs
+sti_sympt_prob_prep_param
 
 
 # STI test frequency at PrEP follow-up visits
@@ -159,40 +161,85 @@ an[prep_revised == 1, freq(prep_stirectfreq)] %>% print
 an[prep_revised == 1, freq(prep_stiurethfreq)] %>% print
 
 
-# %% Mean (12-month) Degree by Race/Ethnicity ----------------------------------
+#####################################################################
+
+# %% Partners
+
+summary(an$pnoa_12m)
+
+summary(an$pna_12m)
+
+summary(an[pna_12m >= 1, pnua_12m])
+
+summary(an$pn_ongoing)
+
+
+# %% Mean Degree by Race/Ethnicity ----------------------------------
 
 rc <- unique(an$race.cat)
 p <- ggplot(an, aes(group = race.cat))
 
-
 sapply(rc, function(x) an[race.cat == x, summary(pnoa_12m)])
 p + geom_boxplot(aes(y = pnoa_12m))
 
+ggplot(an, aes(x = pnoa_12m, y = race.cat)) +
+  geom_density_ridges()
+
 sapply(rc, function(x) an[race.cat == x, summary(pnua_12m)])
-p + geom_boxplot(aes(y = pnua_12m))
+ggplot(an[pna_12m > 0]) +
+  geom_boxplot(aes(x = race.cat, y = pnua_12m))
+
+ggplot(an[pna_12m > 0], aes(x = pnua_12m, y = race.cat)) +
+  geom_density_ridges()
 
 sapply(rc, function(x) an[race.cat == x, summary(pna_12m)])
 p + geom_boxplot(aes(y = pna_12m))
 
+sapply(rc, function(x) an[race.cat == x, summary(pn_ongoing)])
+ggplot(an, aes(x = pn_ongoing, y = race.cat)) +
+  geom_density_ridges()
+
 # %% Mean Degree by Age ---------------------------------------------
 
-plotdeg_by_age <- function(yvar) {
+plotdeg_by_age <- function(yvar, byrace = F) {
 
-  ggplot(an, aes(x = age, y = !!yvar)) +
+  p <- ggplot(an, aes(x = age, y = !!yvar)) +
     geom_point(size = 0.7) +
     geom_smooth()
+
+  if (byrace) {
+    p + facet_wrap(~ race.cat)
+  } else {
+    p
+  }
 
 }
 
 
+# Oral or Anal Partners
 plotdeg_by_age(quo(pnoa_12m)) +
   labs(title = "Oral or Anal Partners (12 months)")
 
+plotdeg_by_age(quo(pnoa_12m), byrace = T) +
+  labs(title = "Oral or Anal Partners (12 months)")
+
+# Anal Partners
 plotdeg_by_age(quo(pna_12m)) +
   labs(title = "Anal-only Partners (12 months)")
 
+plotdeg_by_age(quo(pna_12m), byrace = T) +
+  labs(title = "Anal-only Partners (12 months)")
+
+# Unprotected Anal Partners
 plotdeg_by_age(quo(pnua_12m)) +
   labs(title = "Unprotected Anal Partners (12 months)")
 
+plotdeg_by_age(quo(pnua_12m), byrace = T) +
+  labs(title = "Unprotected Anal Partners (12 months)")
+
+# Ongoing Partnerships
 plotdeg_by_age(quo(pn_ongoing)) +
+  labs(title = "Ongoing Partners (Oral or Anal)")
+
+plotdeg_by_age(quo(pn_ongoing), byrace = T) +
   labs(title = "Ongoing Partners (Oral or Anal)")
