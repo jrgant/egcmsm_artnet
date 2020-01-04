@@ -44,14 +44,14 @@ freq(an$race.cat) %>% print
 # %% HIV by Demo --------------------------------------------------------------
 
 # .. Race
-freq(an$hiv) %>% print
-an[, stby(hiv, race.cat, freq)]
+freq(an$hiv.ego) %>% print
+an[, stby(hiv.ego, race.cat, freq)]
 
 
 # .. Age
 hiv_by_age <- an %>%
-  .[!is.na(hiv)] %>%
-  .[, .(.N, hiv_n = sum(hiv)), keyby = age]
+  .[!is.na(hiv.ego)] %>%
+  .[, .(.N, hiv_n = sum(hiv.ego)), keyby = age]
 
 print(hiv_by_age)
 
@@ -67,7 +67,7 @@ hiv_by_age_sum %>%
   geom_line() +
   geom_ribbon(aes(ymin = Lower, ymax = Upper), alpha = 0.3)
 
-fit <- glm(hiv ~ age * race, data = an, family = "binomial")
+fit <- glm(hiv.ego ~ age * race, data = an, family = "binomial")
 summary(fit)
 
 

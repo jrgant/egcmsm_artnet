@@ -105,7 +105,7 @@ freq(avs$artnetstatus) %>% print
 avs[, .N, keyby = .(artnetrcntrslt, artnetevrpos, artnetstatus)] %>% print
 
 # create HIV status variable
-avs[, hiv := case_when(
+avs[, hiv.ego := case_when(
     !is.na(artnetstatus) ~ artnetstatus - 1,
     artnetevrpos == 1 ~ 1,
     artnetrcntrslt == 2 ~ 1,
@@ -113,11 +113,11 @@ avs[, hiv := case_when(
     TRUE ~ NA_real_)]
 
 # set label
-label(avs$hiv) <- "Derived HIV status"
-freq(avs$hiv) %>% print
+label(avs$hiv.ego) <- "Derived HIV status"
+freq(avs$hiv.ego) %>% print
 
 # check
-avs[, .N, keyby = .(hiv, artnetrcntrslt, artnetevrpos, artnetstatus)]
+avs[, .N, keyby = .(hiv.ego, artnetrcntrslt, artnetevrpos, artnetstatus)]
 
 # compare to original HIV variables (hiv2, hiv3)
 
