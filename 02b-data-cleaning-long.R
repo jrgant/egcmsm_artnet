@@ -152,12 +152,17 @@ anl[p_once == 1, ptype := 3]
 
 anl[(p_main_ong %in% c(0, NA) & p_main_end %in% c(NA, 0)) &
         p_once == 2,
-        ptype := 2]
+     ptype := 2]
 
 
 table(is.na(anl$ptype))
 
-head(anl[, .(id, pid, ptype, p_main_ong, p_once, p_ongoing)])
+head(anl[, .(id,
+             pid,
+             ptype,
+             p_main_ong,
+             p_once,
+             p_ongoing)])
 
 anl[, .N, .(p_once, p_ongoing, p_main_ong, p_main_end, ptype)] %>%
   .[order(ptype, p_once)] %>%
@@ -199,8 +204,10 @@ mean(deg_data$casl_init)
 mean(deg_data$casl_corr)
 
 library(summarytools)
+
 deg_data[, ctable(main, casl_init)]
 deg_data[, ctable(main, casl_corr)]
+
 hist(deg_data$casl_init)
 hist(deg_data$casl_corr)
 hist(deg_data$main)
@@ -211,7 +218,7 @@ pcols <- c("id", "pid", "ptype", "p_race.cat", "p_hiv",
 mp <- anl[ptype == 1 & p_ongoing == 1, ..pcols]
 cp <- anl[ptype == 2 & p_ongoing == 1, ..pcols]
 
-head(mp)
+mp
 
 mp_racemix <- mp[, ctable(ego.race.cat, p_race.cat, prop = "n")]
 cp_racemix <- cp[, ctable(ego.race.cat, p_race.cat, prop = "n")]
