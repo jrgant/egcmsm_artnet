@@ -88,6 +88,27 @@ varselect %>% sort %>% print
 avs <- av[, ..varselect]
 glimpse(avs)
 
+# %% Age Groups --------------------------------------------------------
+
+# Age groups based on:
+
+# Source: Jones J, Grey JA, Purcell DW, Bernstein KT, Sullivan PS, Rosenberg
+# ES. Estimating Prevalent Diagnoses and Rates of New Diagnoses of HIV at the
+# State-Level by Age Group among Men Who Have Sex with Men in the United
+# States. Open Forum Infect Dis. 2018 May 29
+
+avs[, age5 := case_when(
+  age <= 24 ~ 1,
+  age >= 25 & age <= 34 ~ 2,
+  age >= 35 & age <= 44 ~ 3,
+  age >= 45 & age <= 54 ~ 4,
+  age >= 55 ~ 5,
+  TRUE ~ NA_real_
+  )]
+
+table(is.na(avs$age5))
+
+avs[, stby(age, age5, descr)]
 
 # %% HIV Status --------------------------------------------------------
 
