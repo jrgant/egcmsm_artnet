@@ -25,7 +25,6 @@ str_drop <- function(string, data = av) {
 }
 
 drop_cols <- c(
-  "sub_date",
   "surveyeligstarttime",
   "consent",
   "artnetconsent_time",
