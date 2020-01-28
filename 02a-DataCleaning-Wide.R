@@ -2,7 +2,7 @@
 
 # Running this source file should result in a printout of the variables
 # included in each of the datasets the import script returns.
-source("01-import-private-data.R")
+source("01-Import-Private-Data.R")
 
 pacman::p_load(
   magrittr,
@@ -50,6 +50,7 @@ sapply(av, function(x) is.labelled(x)) %>% table
 # %% Select Variables --------------------------------------------------------
 
 varselect <- c(
+  "sub_date",
   # Demographic
   "id",
   "age",
