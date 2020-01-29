@@ -8,7 +8,7 @@ pacman::p_load(data.table,
 
 # %% Import Private Data ------------------------------------------------------
 
-# PD_PATH is an R environment variable
+# PD_PATH is a system environment variable on my local machine
 artdat <- paste0(
   Sys.getenv("ARTNET_PATH"),
   list.files(Sys.getenv("ARTNET_PATH"),
