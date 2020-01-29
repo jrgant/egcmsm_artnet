@@ -1,13 +1,21 @@
 # %% Setup --------------------------------------------------------------------
 
-pacman::p_load(data.table, ggplot2, ggthemes, magrittr, summarytools)
-
-# external folder with private ART-Net data
-pd_path <- "C:/Users/jason/Private-Data/ArtNet"
+pacman::p_load(data.table,
+               ggplot2,
+               ggthemes,
+               magrittr,
+               summarytools)
 
 # %% Import Private Data ------------------------------------------------------
 
-artdat <- paste0(pd_path, "/", list.files(pd_path, pattern = "ARTNet-Merged"))
+# PD_PATH is an R environment variable
+artdat <- paste0(
+  Sys.getenv("ARTNET_PATH"),
+  list.files(Sys.getenv("ARTNET_PATH"),
+             pattern = "ARTNet-Merged")
+)
+
+print(artdat)
 
 # av = ARTNet survey data
 load(artdat)
