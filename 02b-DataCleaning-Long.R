@@ -374,7 +374,8 @@ anl[, table(ptype, psubtype, exclude = NULL)]
 # @TODO 2020-01-29
 # - Everything below this line should be moved to a new file modeled off
 #   EpiModel NetStats scripts
-# - However, any cleaning or imputation that occurs below should be conducted #   using the anl data.table and saved as a cleaned long file in the private
+# - However, any cleaning or imputation that occurs below should be conducted
+#   using the anl data.table and saved as a cleaned long file in the private
 #   data directory (outside this project).
 
 # %% MAIN AND CAUSAL PARTNERSHIPS ----------------------------------------------
