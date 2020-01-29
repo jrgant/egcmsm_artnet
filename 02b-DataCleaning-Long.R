@@ -62,10 +62,9 @@ print(colsets)
 # Create long-format tables for each variable type
 
 # @NOTE:
-#  - data.table will kick a warning that some of the columns beings collapsed
-#    are not of the same type (some double, some integer).
-#  - Output column is converted to double.
-#  - Interger-to-double conversion should be safe.
+#  - Data.table kicks a warning that NAs are introduced due to coercion.
+#  - A result of converting a subset of variables to integer format.
+#  - Some were saved as character with missing values recorded as "".
 
 sapply(slugs[grepl("recai|recuai|insai|insuai|once|acts", slugs)], print)
 
@@ -100,11 +99,10 @@ melted_vars <- lapply(setNames(slugs, slugs), function(x) {
   })
 
 lapply(melted_vars[integer_coerce], function(x) sapply(x[, 3], class))
-
+lapply(melted_vars[integer_coerce], function(x) unique(unlist(x[, 3])))
 length(melted_vars)
 
 checknrow <- sapply(melted_vars, nrow) %>% unlist
-
 table(checknrow == nrow(pid_tab))
 
 # Bind partner data into long-format data.table
@@ -135,7 +133,7 @@ plong2 <- plong[an[, .(id,
   .[order(id, pid)] %>%
   .[, nn := ifelse(nn == "", NA, nn)]
 
-names(plong2)
+print(names(plong2))
 str(plong2)
 
 # variables coded with 88/99 as "don't know" or "prefer not to answer"
