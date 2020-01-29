@@ -303,4 +303,9 @@ freq(avs$pno_12m) %>% print
 # %% Write Cleaned Dataset ---------------------------------------------------
 
 print(sort(names(avs)))
-fwrite(avs, paste0(pd_path, "/artnet-wide-cleaned.csv"), row.names = F)
+
+fwrite(
+  avs,
+  paste0(Sys.getenv("ARTNET_PATH"), "/artnet-wide-cleaned.csv"),
+  row.names = F
+)
