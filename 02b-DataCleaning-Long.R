@@ -13,7 +13,7 @@ pacman::p_load(data.table,
 unql <- function(data) length(unique(data))
 
 # import cleaned wide dataset
-an <- fread(paste0(pd_path, "/artnet-wide-cleaned.csv"))
+an <- fread(paste0(Sys.getenv("ARTNET_PATH"), "/artnet-wide-cleaned.csv"))
 
 
 # %% INDIVIDUAL PARTNER DATA ---------------------------------------------------
