@@ -152,7 +152,9 @@ na_8899 <- paste0("p_", c("hisp",
                           "concurr",
                           "concurr2",
                           na.omit(
-                            stringr::str_extract(names(anl), "(?<=^p_).*_once$")
+                            stringr::str_extract(
+                              names(plong2),
+                              "(?<=^p_).*_once$")
                             ),
                           "stidiag",
                           "stitx",
@@ -244,21 +246,35 @@ anl[ptype %in% 1:2, .N, keyby = .(ptype,
                                   p_ongoing_ind)]
 
 
-# create ongoing partnership indicator based on reported relationship
-# start and end date
+# %% PARTNERSHIP DATES ---------------------------------------------------------
+
 anl[ptype %in% 1:2, .N, .(p_startyyyy, p_startyyyydk)]
 anl[, unique(p_startyyyy)]
 anl[, unique(p_startyyyydk)]
 
 # replace invalid years with NA
-anl[ptype %in% 1:2, p_startyyyy :=
-    ifelse(!grepl("^[19|20][0-9]{2}", p_startyyyy),
-           NA, p_startyyyy)]
+anl[ptype %in% 1:2,
+    p_startyyyy := ifelse(!grepl("^(19|20)[0-9]{2}", p_startyyyy),
+                          NA, p_startyyyy)]
 
-anl[ptype %in% 1:2, prop.table(table(is.na(p_startyyyy)))]
-anl[ptype %in% 1:2, prop.table(table(is.na(p_startyyyydk)))]
+# check overall start dates
+anl[ptype %in% 1:2, .N, .(startyyyy_miss = is.na(p_startyyyy))] %>%
+  .[, P := N / sum(N)] %>%
+  print
 
-# where startyyyy missing and startyyyydk estiamte present,
+anl[ptype %in% 1:2, .N, .(startyyyydk_miss = is.na(p_startyyyydk))] %>%
+  .[, P := N / sum(N)] %>%
+  print
+
+anl[ptype %in% 1:2, .N, .(startmm_miss = is.na(p_startmm))] %>%
+  .[, P := N / sum(N)] %>%
+  print
+
+anl[ptype %in% 1:2, .N, .(maincasendmm_miss = is.na(p_maincasendmm))] %>%
+  .[, P := N / sum(N)] %>%
+  print
+
+# where startyyyy missing and startyyyydk estimate present,
 # impute partnership start date
 
 set.seed(3000)
@@ -278,13 +294,21 @@ anl[ptype %in% 1:2, .N, keyby = .(ptype, p_ongoing_ind)]
 anl[ptype %in% 1:2,
     date_impute_type := case_when(
       !is.na(p_startyyyy) & !is.na(p_startmm) ~ "none",
-      !is.na(p_startyyyy) &  is.na(p_startmm) ~ "m",
-       is.na(p_startyyyy) & !is.na(p_startyyyydk) & !is.na(p_startmm) ~ "y",
-       is.na(p_startyyyy) & !is.na(p_startyyyydk) &  is.na(p_startmm) ~ "ym",
-       TRUE ~ NA_character_
+      !is.na(p_startyyyy) & is.na(p_startmm) ~ "month",
+      is.na(p_startyyyy) & !is.na(p_startyyyydk) &
+        !is.na(p_startmm) ~ "year",
+      is.na(p_startyyyy) & !is.na(p_startyyyydk) &
+        is.na(p_startmm) ~ "year and month",
+      is.na(p_startyyyy) & is.na(p_startyyyydk) &
+        !is.na(p_startmm) ~ "year",
+      TRUE ~ NA_character_
     ), .(id, pid)]
 
-anl[ptype %in% 1:2, .N, keyby = .(p_ongoing_ind, date_impute_type)]
+anl[ptype %in% 1:2, .N, keyby = .(p_ongoing_ind,
+                                  date_impute_type)]
+
+
+# %% SEXUAL ACTS PRESENT AND ANAL/ORAL SEX ROLE --------------------------------
 
 # FALSE-FALSE cell should equal 0
 anl[, table(is.na(p_rai), is.na(p_rai_once))]
@@ -294,15 +318,12 @@ anl[, table(is.na(p_roi), is.na(p_roi_once))]
 anl[, table(is.na(p_actsprefernot), is.na(p_actsprefernot_once))]
 anl[, table(is.na(p_actsdk), is.na(p_actsdk_once))]
 
-
-# %% SEXUAL ACTS PRESENT AND ANAL/ORAL SEX ROLE --------------------------------
-
 # set partner subtype, main and casual partnerships
 anl[ptype %in% 1:2,
     psubtype := dplyr::case_when(
-      (p_rai == 1 | p_iai == 1) & (p_roi == 1 | p_ioi == 1) ~ "oa",
-      (p_rai == 0 & p_iai == 0) & (p_roi == 1 | p_ioi == 1) ~ "oo",
-      (p_rai == 1 | p_iai == 1) & (p_roi == 0 & p_ioi == 0) ~ "ao",
+      (p_rai == 1 | p_iai == 1) & (p_roi == 1 | p_ioi == 1) ~ "oralanal",
+      (p_rai == 0 & p_iai == 0) & (p_roi == 1 | p_ioi == 1) ~ "oralonly",
+      (p_rai == 1 | p_iai == 1) & (p_roi == 0 & p_ioi == 0) ~ "analonly",
       p_rai + p_iai + p_roi + p_ioi +
         p_actsprefernot + p_actsdk == 0 ~ "nosex",
       (p_rai + p_iai + p_roi + p_ioi == 0) &
@@ -314,11 +335,11 @@ anl[ptype %in% 1:2,
 anl[ptype == 3,
     psubtype := dplyr::case_when(
       (p_rai_once == 1 | p_iai_once == 1) &
-        (p_roi_once == 1 | p_ioi_once == 1) ~ "oa",
+        (p_roi_once == 1 | p_ioi_once == 1) ~ "oralanal",
       (p_rai_once == 0 & p_iai_once == 0) &
-        (p_roi_once == 1 | p_ioi_once == 1) ~ "oo",
+        (p_roi_once == 1 | p_ioi_once == 1) ~ "oralonly",
       (p_rai_once == 1 | p_iai_once == 1) &
-        (p_roi_once == 0 & p_ioi_once == 0) ~ "ao",
+        (p_roi_once == 0 & p_ioi_once == 0) ~ "analonly",
       p_rai_once + p_iai_once + p_roi_once + p_ioi_once +
         p_actsprefernot_once + p_actsdk_once == 0 ~ "nosex",
       (p_rai_once + p_iai_once + p_roi_once + p_ioi_once == 0) &
@@ -349,6 +370,15 @@ anl[ptype %in% 1:2, .(id, pid, ptype, psubtype,
 sc <- names(anl)[grepl("once", names(anl))][2:7]
 anl[, table(ptype, psubtype, exclude = NULL)]
 
+
+# @TODO 2020-01-29
+# - Everything below this line should be moved to a new file modeled off
+#   EpiModel NetStats scripts
+# - However, any cleaning or imputation that occurs below should be conducted #   using the anl data.table and saved as a cleaned long file in the private
+#   data directory (outside this project).
+
+# %% MAIN AND CAUSAL PARTNERSHIPS ----------------------------------------------
+
 egos <- length(unique(anl$id))
 
 total_main <- unname(table(anl$ptype == 1)[2])
@@ -356,9 +386,9 @@ total_casl <- unname(table(anl$ptype == 2)[2])
 total_pships <- anl[!is.na(ptype), length(unique(paste0(id, pid)))]
 sum(total_main, total_casl)
 
-
 cat(
   sep = "",
+  "AMONG MSM WITH PARTNERSHIPS\n", rep("=", 30), "\n\n",
   "Unique egos\n", format(egos, big.mark = ","), "\n\n",
   "Unique main partnerships\n", format(total_main, big.mark = ","), "\n\n",
   "Unique casual partnerships\n", format(total_casl, big.mark = ","), "\n\n",
@@ -366,30 +396,122 @@ cat(
 )
 
 # ongoing main or casual partnerships
-ong_cols <- c("id", "pid", "ptype", "psubtype",
-              "startyyyy", "startyyyydk", "startmm",
+ong_cols <- c("sub_date", "id", "pid",
+              "ptype", "psubtype",
+              "p_startyyyy", "p_startyyyydk", "p_startmm",
               "ego.anal.role")
 
 maincas_ong <- anl[ptype %in% 1:2 & p_ongoing_ind == 1, .N, ong_cols]
+setkeyv(maincas_ong, cols = c("id", "pid"))
 
-print(maincas_ong)
 maincas_ong[, table(ptype, psubtype, exclude = NULL)]
 
+# convert subdate to date
+maincas_ong[, sub_date := ymd(sub_date)]
+str(maincas_ong)
 
+# ongoing main and casual partnerships
+sum(maincas_ong$ptype == 1)
+sum(maincas_ong$ptype == 2)
+
+
+# drops 1 partnership with no sex
+# drops 12 partnerships with missing data on psubtype
+ong_ptype_cts <- dcast(data = maincas_ong[!psubtype %in% c("no sex", NA)],
+                       formula = id ~ psubtype + ptype,
+                       fun.aggregate = sum,
+                       value.var = "N")
+
+print(ong_ptype_cts)
+
+
+# %% PARTNERSHIP DURATIONS -----------------------------------------------------
+
+# impute start month
+maincas_ong[is.na(p_startmm),
+            p_startmm := sample(1:12, size = 1),
+            by = .(id, pid)]
+
+set.seed(283798)
+
+maincas_ong[,
+  p_startdt := ymd(
+    paste(
+      p_startyyyy, p_startmm,
+      # sample day of the month (all rows)
+      ((p_startmm %in% c(1, 3, 5, 7, 8, 10, 12)) * sample(1:31, size = 1)) +
+        ((p_startmm %in% c(4, 6, 9, 11)) * sample(1:30, size = 1)) +
+        ((p_startmm == 2) * sample(1:28, size = 1)),
+      sep = "-")),
+  by = .(id, pid)]
+
+maincas_ong[is.na(p_startdt)] %>% print
+
+datecols <- c("ptype", "p_startyyyy", "p_startyyyydk", "p_startmm", "p_startdt")
+
+# if provided year range of partnership start date, impute
+# set upper limit to 15
+startdt_match <- list(ydk1 = 1:364,
+                      ydk2 = 365 : (2 * 365 - 1),
+                      ydk3 = (2 * 365) : (5 * 365 - 1),
+                      ydk4 = (5 * 365) : (10 * 365 - 1),
+                      ydk5 = (10 * 365) : (15 * 364 - 1))
+
+sapply(startdt_match, range)
+
+maincas_ong[!is.na(p_startyyyydk),
+            p_startdt := sub_date - sample(startdt_match[[p_startyyyydk]],
+                                           size = 1),
+            by = .(id, pid)]
+
+maincas_ong[is.na(p_startdt)]
+
+# @TODO 2020-01-28: fix this issue more naturally
+# set abs to account for imputed dates that were after the sub date
+maincas_ong[, durat_days := abs(as.numeric(sub_date - p_startdt))]
+maincas_ong[, durat_wks := round(durat_days / 7)]
+class(maincas_ong$durat_days)
+class(maincas_ong$durat_wks)
+
+maincas_ong[, .(id, pid, p_startyyyy, p_startmm,
+                p_startdt, sub_date, durat_days, durat_wks)]
+
+maincas_ong[, table(durat_wks < 0)]
+
+ggplot(maincas_ong,
+       aes(x = durat_wks)) +
+       geom_density() +
+       facet_wrap(~ ptype) +
+       theme_clean()
+
+fit_all_dur <- maincas_ong[, glm(durat_wks ~ 1, family = "quasipoisson")]
+
+fit_main_dur <- maincas_ong[ptype == 1,
+                            glm(durat_wks ~ 1, family = "quasipoisson")]
+
+fit_casl_dur <- maincas_ong[ptype == 2,
+                            glm(durat_wks ~ 1, family = "quasipoisson")]
+
+durats <- rbind(
+  add_ci(fit_all_dur, tb = data.frame(1)),
+  add_ci(fit_main_dur, tb = data.frame(1)),
+  add_ci(fit_casl_dur, tb = data.frame(1))
+)
+
+durats$X1 <- NULL
+durats$ptype <- c("overall", "main", "casual")
+
+setDT(durats)
+
+print(durats)
+
+# %% ONE-TIME PARTNERSHIPS -----------------------------------------------------
 
 # onetime partnerships
 ponetime <- anl[ptype == 3, .N, .(id, psubtype, ptype)]
 
-# drops 1 partnership with no sex
-# drops 12 partnerships with missing data on psubtype
-ong_counts <- dcast(maincas_ong[!psubtype %in% c("nosex", NA)],
-                    id ~ psubtype + ptype,
-                    value.var = "N")
 
-print(ong_counts)
-
-
-# %% IMPUTE AGE ----------------------------------------------------
+# %% IMPUTE AGE --------------------------------------------------------------
 
 # Source for age imputation:
 
@@ -441,6 +563,9 @@ anl[, .(agediff = p_age_imputed - ego.age),
         max = max(agediff)),
       key = p_relage]
 
+
+# %% CALCULATE AGE DIFFERENCES -------------------------------------------------
+
 # calculate age differences
 anl[, ":="(abs_agediff = abs(p_age_imputed - ego.age),
            abs_sqrt_agediff = abs(sqrt(p_age_imputed) - sqrt(ego.age))
@@ -454,6 +579,9 @@ anl[, .(abs_agediff, abs_sqrt_agediff)]
 anl[!is.na(nn), sum(is.na(p_age_imputed)) / unql(paste0(id, pid))]
 
 print(names(anl))
+
+
+# %% RACE/ETHNICITY ------------------------------------------------------------
 
 # Create partner version of race.cat
 racematch <- c("1" = "other",
@@ -483,47 +611,57 @@ anl[, .N, .(id)][, summary(N)]
 dfSummary(anl, plain.ascii = T, graph.col = F)
 
 
-# # %% IMPUTE RACE/ETHNICITY -----------------------------------------------------
-#
-# # check missing partner race/ethnicity, among egos with partnerships
-# anl[!is.na(nn), sum(is.na(p_race.cat)) / unql(paste0(id, pid))]
+# # %% IMPUTE RACE/ETHNICITY ---------------------------------------------------
+
+# @NOTE 2020-01-28
+# holding off for now on this; might not be necessary
 
 
 # %% CALCULATE MAIN AND CASUAL DEGREE ------------------------------------------
 
 # Main and causal partnerships (ongoing)
 
-deg_data <- ong_counts[an[, .(id,
-                              pn_ongoing,
-                              race.cat,
-                              age5)],
-                       on = "id"][order(id)]
+# join ongoing partner counts with ego traits
+deg_data <- ong_ptype_cts[an[, .(id, pn_ongoing,
+                                 race.cat, age5)], on = "id"]
 
+setkey(deg_data, id)
+
+# should be 0
 sum(is.na(deg_data$race.cat))
 sum(is.na(deg_data$age5))
 
 # if partnership type count missing, set to 0
-deg_data[, ":=" (
-  ao_1 = ifelse(is.na(ao_1), 0, ao_1),
-  ao_2 = ifelse(is.na(ao_2), 0, ao_2),
-  oa_1 = ifelse(is.na(oa_1), 0, oa_1),
-  oa_2 = ifelse(is.na(oa_2), 0, oa_2),
-  oo_1 = ifelse(is.na(oo_1), 0, oo_1),
-  oo_2 = ifelse(is.na(oo_2), 0, oo_2)
-  )] %>%
-  .[, degmain := ao_1 + oa_1 + oo_1] %>%
+deg_data[, ":="(
+      analonly_1 = ifelse(is.na(analonly_1), 0, analonly_1), # main, anal-only
+      oralanal_1 = ifelse(is.na(oralanal_1), 0, oralanal_1), # main, oral-anal
+      oralonly_1 = ifelse(is.na(oralonly_1), 0, oralonly_1), # main, oral-only
+      analonly_2 = ifelse(is.na(analonly_2), 0, analonly_2), # casual, anal-only
+      oralanal_2 = ifelse(is.na(oralanal_2), 0, oralanal_2), # casual, oral-anal
+      oralonly_2 = ifelse(is.na(oralonly_2), 0, oralonly_2)  # casual, oral-only
+    )] %>%
+  # main degree
+  .[, degmain := analonly_1 + oralanal_1 + oralonly_1] %>%
   .[, degmain_trunc2 := ifelse(degmain >= 2, 2, degmain)] %>%
-  .[, main_conc := ifelse(degmain >= 2, 1, 0)] %>%
-  .[, degcasl := ao_2 + oa_2 + oo_2] %>%
-  .[, casl_conc := ifelse(degcasl >= 2, 1, 0)]
+  # casual degree
+  .[, degcasl := analonly_2 + oralanal_2 + oralonly_2] %>%
+  # total degree (main + casual)
+  .[, degtotal := degmain + degcasl] %>%
+  # concurrency indicators
+  .[, main_conc_ind := ifelse(degmain >= 2, 1, 0)] %>%
+  .[, casl_conc_ind := ifelse(degcasl >= 2, 1, 0)] %>%
+  .[, maincasl_conc_ind := degtotal > 1]
 
-print(deg_data)
+str(deg_data)
 
 deg_data[, .N, degmain][, P := N / sum(N)] %>% print
-deg_data[, .N, main_conc][, P := N / sum(N)] %>% print
-deg_data[, .N, keyby = degcasl][, P := N / sum(N)] %>% print
-deg_data[, .N, casl_conc][, P := N / sum(N)] %>% print
+degmain_t2 <- deg_data[, .N, degmain_trunc2][, P := N / sum(N)]
+print(degmain_t2)
 
+deg_data[, .N, main_conc_ind][, P := N / sum(N)] %>% print
+deg_data[, .N, keyby = degcasl][, P := N / sum(N)] %>% print
+deg_data[, .N, casl_conc_ind][, P := N / sum(N)] %>% print
+deg_data[, .N, maincasl_conc_ind][, P := N / sum(N)] %>% print
 
 # # if initial casual estimate missing, assign casual_init degree as 0
 # deg_data[is.na(casl_init), casl_init := 0]
@@ -549,9 +687,6 @@ deg_data[, .N, casl_conc][, P := N / sum(N)] %>% print
 #
 # dfSummary(onetime_data, graph.col = F)
 
-# %% MAIN AND CASUAL DURATIONS -------------------------------------------------
-
-
 
 # %% INSPECT DEGREE/ONETIME DATASETS -------------------------------------------
 
@@ -560,19 +695,19 @@ deg_data[, .N, casl_conc][, P := N / sum(N)] %>% print
 # oo = oral-only partnership
 
 deg_data[, .(mn_degmain = mean(degmain),
-             mn_oa_1 = mean(oa_1),
-             mn_ao_1 = mean(ao_1),
-             mn_oo_1 = mean(oo_1))]
+             mn_oa_1 = mean(oralanal_1),
+             mn_ao_1 = mean(analonly_1),
+             mn_oo_1 = mean(oralonly_1))]
 
 sum_main_total <- deg_data[, .N, key = degmain][, P := round(N / sum(N), 3)]
-sum_main_oa    <- deg_data[, .N, key = oa_1][, P := round(N / sum(N), 3)]
-sum_main_ao    <- deg_data[, .N, key = ao_1][, P := round(N / sum(N), 3)]
-sum_main_oo    <- deg_data[, .N, key = oo_1][, P := round(N / sum(N), 3)]
+sum_main_oa    <- deg_data[, .N, key = oralanal_1][, P := round(N / sum(N), 3)]
+sum_main_ao    <- deg_data[, .N, key = analonly_1][, P := round(N / sum(N), 3)]
+sum_main_oo    <- deg_data[, .N, key = oralonly_1][, P := round(N / sum(N), 3)]
 
 sum_casl_total <- deg_data[, .N, key = degcasl][, P := round(N / sum(N), 3)]
-sum_casl_oa    <- deg_data[, .N, key = oa_2][, P := round(N / sum(N), 3)]
-sum_casl_ao    <- deg_data[, .N, key = ao_2][, P := round(N / sum(N), 3)]
-sum_casl_oo    <- deg_data[, .N, key = oo_2][, P := round(N / sum(N), 3)]
+sum_casl_oa    <- deg_data[, .N, key = oralanal_2][, P := round(N / sum(N), 3)]
+sum_casl_ao    <- deg_data[, .N, key = analonly_2][, P := round(N / sum(N), 3)]
+sum_casl_oo    <- deg_data[, .N, key = oralonly_2][, P := round(N / sum(N), 3)]
 
 pcols <- c("id",
            "pid",
@@ -624,9 +759,11 @@ age5_unq <- data.table(age5 = sort(unique(deg_data$age5)))
 main_degt2_unq <- data.table(
   degmain_trunc2 = sort(unique(deg_data$degmain_trunc2))
 )
+
 casual_deg_unq <- data.table(degcasl = sort(unique(deg_data$degcasl)))
 
 cilabs <- c("ll95", "ul95")
+
 
 # %% MAIN PARTNERSHIPS ---------------------------------------------------------
 
@@ -663,8 +800,8 @@ main_deg_bycasldeg_preds <- add_ci(casual_deg_unq,
                                    names = cilabs)
 print(main_deg_bycasldeg_preds)
 
-main_concurrent_prob <- deg_data[, mean(main_conc)]
-main_concurrent_prob
+main_concurrent_prob <- deg_data[, mean(main_conc_ind)]
+round(main_concurrent_prob, 3)
 
 
 # %% CASUAL PARTNERSHIPS -------------------------------------------------------
@@ -698,19 +835,18 @@ print(casl_deg_byage5_preds)
 
 ## nodefactor("degmain")
 casl_deg_bymaindegt2_preds <- add_ci(main_degt2_unq,
-                                   fit_casl_deg_bymain,
+                                   fit_casl_deg_bymaint2,
                                    names = cilabs)
 print(casl_deg_bymaindegt2_preds)
 
-casl_concurrent_prob <- deg_data[, mean(casl_conc)]
-casl_concurrent_prob
+casl_concurrent_prob <- deg_data[, mean(casl_conc_ind)]
+round(casl_concurrent_prob, 3)
 
 
-# %% WRITE DATA ----------------------------------------------------------------
-
-# write summaries
+# %% WRITE SUMMARIES -----------------------------------------------------------
 
 main_summaries <- list(sum_main_total = sum_main_total,
+                       sum_main_trunc = degmain_t2,
                        sum_main_oa    = sum_main_oa,
                        sum_main_ao    = sum_main_ao,
                        sum_main_oo    = sum_main_oo)
@@ -722,49 +858,40 @@ casl_summaries <- list(sum_casl_total = sum_casl_total,
 
 saveRDS(list(main_summaries = main_summaries,
              casl_summaries = casl_summaries),
-        file = "netstats/degree_summaries.Rds")
+        file = "netstats/aggregate_degree_summaries.Rds")
 
 # Main predictions
 
 main_predictions <- list()
 
-main_predictions$main_deg_byrace <- list(
-  fits  = fit_main_deg_byrace,
-  preds = main_deg_byrace_preds
-)
+# degree
+main_predictions$deg_byrace <- main_deg_byrace_preds
+main_predictions$deg_byage5 <- main_deg_byage5_preds
+main_predictions$deg_bycasltot <- main_deg_bycasldeg_preds
+main_predictions$concurrent_prob <- main_concurrent_prob
+main_predictions$mean_durat_wks <- durats[ptype == "main", pred]
+main_predictions$absdiff_sqrtage <- anl[ptype == 1,
+                                        mean(abs_sqrt_agediff, na.rm = T)]
 
-main_predictions$main_deg_byage5 <- list(
-  fits  = fit_main_deg_byage5,
-  preds = main_deg_byage5_preds
-)
-
-main_predictions$main_deg_bycasltot <- list(
-  fits  = fit_main_deg_bycasl,
-  preds = main_deg_bycasldeg_preds
-)
+print(main_predictions)
 
 # Casual predictions
 
 casl_predictions <- list()
 
-casl_predictions$casl_deg_byrace <- list(
-  fits = fit_casl_deg_byrace,
-  preds = casl_deg_byrace_preds
-)
+casl_predictions$deg_byrace <- casl_deg_byrace_preds
+casl_predictions$deg_byage5 <- casl_deg_byage5_preds
+casl_predictions$deg_bymaindegt2 <- casl_deg_bymaindegt2_preds
+casl_predictions$mean_durat_wks <- durats[ptype == "casual", pred]
+casl_predictions$concurrent_prob <- casl_concurrent_prob
+casl_predictions$absdiff_sqrtage <- anl[ptype == 2,
+                                        mean(abs_sqrt_agediff, na.rm = T)]
 
-casl_predictions$casl_deg_byage5 <- list(
-  fits  = fit_casl_deg_byage5,
-  preds = casl_deg_byage5_preds
-)
+print(casl_predictions)
 
-casl_predictions$casl_deg_bymaindegt2 <- list(
-  fits  = fit_casl_deg_bymaint2,
-  preds = casl_deg_bymaindegt2_preds
-)
+netstats <- list(main = main_predictions,
+                 casl = casl_predictions)
 
+print(netstats)
 
-pship_predictions <- list(main = main_predictions,
-                          casl = casl_predictions)
-pship_predictions
-
-saveRDS(pship_predictions, file = "netstats/pship_predictions.Rds")
+saveRDS(netstats, file = "netstats/predictions.Rds")
