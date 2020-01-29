@@ -93,9 +93,10 @@ deg.casl <- sample(casldat[, degcasl],
 summary(factor(deg.casl))
 
 
+
 # %% TECHNICAL PARAMETERS ------------------------------------------------------
 
-mcmc.maxiterations <- 200
+mcmc.maxiterations <- 500
 use_ncores <- 4
 
 
@@ -137,21 +138,25 @@ edges_main <- round(weighted.mean(edges_main_calc$pred,
                                   edges_main_calc$weight) * pop.N / 2)
 print(edges_main)
 
+main_concurrent <- round(pdat$main$concurrent_prob * pop.N)
+
 formation <- ~edges +
              nodefactor("race.eth", levels = -1) +
              nodefactor("age5", levels = -1) +
              nodefactor("deg.casl", levels = -1) +
+             concurrent +
              degrange(from = 3)
 
 
 netstats_main <- c(
   edges = edges_main,
   nodefactor_race = round((pdat$main$deg_byrace$pred[-1] *
-                           table(race)[-1]) / 2),
+                           table(race)[-1])),
   nodefactor_age5 = round((pdat$main$deg_byage5$pred[-1] *
-                           table(age5)[-1]) / 2),
+                           table(age5)[-1])),
   nodefactor_degcasl = round((pdat$main$deg_bycasltot$pred[-1] *
-                               table(deg.casl)[-1]) / 2),
+                               table(deg.casl)[-1])),
+  concurrent = main_concurrent,
   degrange = 0)
 
 netstats_main <- unname(netstats_main)
@@ -171,6 +176,7 @@ netest_main <- netest(
        )
 
 summary(netest_main)
+saveRDS(netest_main, "netest/netest_main.Rds")
 
 mcmc.diagnostics(netest_main$fit)
 
@@ -179,8 +185,8 @@ dx_main <- netdx(netest_main,
                  nsteps = 52 * 3,
                  ncores = use_ncores)
 
+saveRDS(dx_main, "netest/dx_main.Rds")
 plot(dx_main)
-
 
 # %% CASUAL PARTNERSHIPS -------------------------------------------------------
 
@@ -199,25 +205,30 @@ edges_casl <- round(weighted.mean(edge_casl_calc$pred,
                                   edge_casl_calc$weight) * pop.N / 2)
 print(edges_casl)
 
+casl_concurrent <- round(pdat$casl$concurrent_prob * pop.N)
+print(casl_concurrent)
+
 formation <- ~edges +
              nodefactor("race.eth", levels = -1) +
              nodefactor("age5", levels = -1) +
              nodefactor("deg.main", levels = -1) +
+             concurrent +
              degrange(from = 5)
 
 
 netstats_casl <- c(
   edges = edges_casl,
   nodefactor_race = round((pdat$casl$deg_byrace$pred[-1] *
-                          table(race)[-1]) / 2),
+                          table(race)[-1])),
   nodefactor_age5 = round((pdat$casl$deg_byage5$pred[-1] *
-                          table(age5)[-1]) / 2),
+                          table(age5)[-1])),
   nodefactor_degmain = round((pdat$casl$deg_bymaindegt2$pred[-1] *
-                               table(deg.main)[-1]) / 2),
+                               table(deg.main)[-1])),
+  concurrent = casl_concurrent,
   degrange = 0)
 
 netstats_casl <- unname(netstats_casl)
-netstats_casl
+print(netstats_casl)
 
 # @TODO 2020-01-28
 # add mortality rates
@@ -233,6 +244,7 @@ netest_casl <- netest(
        )
 
 summary(netest_casl)
+saveRDS(netest_casl, "netest/netest_casl.Rds")
 
 mcmc.diagnostics(netest_casl$fit)
 
@@ -242,6 +254,6 @@ dx_casl <- netdx(netest_casl,
                  ncores = use_ncores)
 
 plot(dx_casl)
-
+saveRDS(dx_casl, "netest/dx_casl.Rds")
 
 # %% ONE-TIME PARTNERSHIPS -----------------------------------------------------
