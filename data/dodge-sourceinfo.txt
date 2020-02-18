@@ -1,0 +1,25 @@
+===========================================================================
+ Full citation:
+===========================================================================
+
+Dodge B, Herbenick D, Fu T-CJ, Schick V, Reece M, Sanders S, et al. Sexual 
+Behaviors of U.S. Men by Self-Identified Sexual Orientation: Results From 
+the 2012 National Survey of Sexual Health and Behavior. J Sex Med 
+2016;13:637–49. doi:10.1016/j.jsxm.2016.01.015.
+
+===========================================================================
+ Notes
+===========================================================================
+
+- Table headings modified for use in parameter code and files.
+- Values taken from published tables.
+- All cells expressed as % (n)
+
+Table 2. Weighted Gender of Sexual Partner in Past 12 Months by Sexual 
+			Identity (subset to "Homosexual or Gay")
+
+Table 4. Weighted Lifetime and Recency of Oral Sex by Sexual Identity 
+			(subset to "Homosexual or Gay", odds ratios removed)
+
+Table 5. Weighted Lifetime and Recency of Genital Contact by Sexual 
+			Identity (subset to "Homosexual or Gay" and anal intercouse acts)
