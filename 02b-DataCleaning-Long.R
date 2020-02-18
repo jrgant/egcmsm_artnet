@@ -371,12 +371,117 @@ sc <- names(anl)[grepl("once", names(anl))][2:7]
 anl[, table(ptype, psubtype, exclude = NULL)]
 
 
-# @TODO 2020-01-29
-# - Everything below this line should be moved to a new file modeled off
-#   EpiModel NetStats scripts
-# - However, any cleaning or imputation that occurs below should be conducted
-#   using the anl data.table and saved as a cleaned long file in the private
-#   data directory (outside this project).
+# %% IMPUTE AGE --------------------------------------------------------------
+
+# Source for age imputation:
+
+# Weiss KM, Goodreau SM, Morris M, Prasad P, Ramaraju R, Sanchez T, et al.
+# Egocentric Sexual Networks of Men Who Have Sex with Men in the United States:
+# Results from the ARTnet Study. medRxiv. 2019. doi:10.1101/19010579
+
+# @NOTE: My method varied slightly from theirs
+
+plot(density(anl$p_age, na.rm = T))
+anl[, .N, key = p_age]
+
+# set age == 0 to missing
+anl[, p_age := ifelse(p_age == 0, NA, p_age)]
+print(anl[, .(id, p_age)])
+
+sum(is.na(anl$p_age))
+
+anl[is.na(p_age) & is.na(p_relage), sum(.N)]
+anl[, .N, key = p_relage] %>% print
+class(anl$p_age)
+
+# Based on PARTXRELAGE (ART-Net survey)
+set.seed(1998)
+
+anl[, p_age_imputed := dplyr::case_when(
+          p_relage == 1 ~ ego.age - sample(size = 1, x = 10:15),
+          p_relage == 2 ~ ego.age - sample(size = 1, x = 2:10),
+          p_relage == 3 ~ ego.age + sample(size = 1, x = -1:1),
+          p_relage == 4 ~ ego.age + sample(size = 1, x = 2:10),
+          p_relage == 5 ~ ego.age + sample(size = 1, x = 10:15),
+          !is.na(p_age) ~ p_age,
+          TRUE ~ NA_integer_),
+      .(id, pid)] %>%
+  .[, p_age5 := dplyr::case_when(
+          p_age_imputed <= 24 ~ 1,
+          p_age_imputed >= 25 & p_age_imputed <= 34 ~ 2,
+          p_age_imputed >= 35 & p_age_imputed <= 44 ~ 3,
+          p_age_imputed >= 45 & p_age_imputed <= 54 ~ 4,
+          p_age_imputed >= 55 ~ 5,
+          TRUE ~ NA_real_
+    )]
+
+print(anl[, .(p_age, p_age_imputed)])
+
+anl[, .(agediff = p_age_imputed - ego.age),
+      key = p_relage] %>%
+  .[, .(min = min(agediff),
+        max = max(agediff)),
+      key = p_relage]
+
+
+# %% CALCULATE AGE DIFFERENCES -------------------------------------------------
+
+# calculate age differences
+anl[, ":="(abs_agediff = abs(p_age_imputed - ego.age),
+           abs_sqrt_agediff = abs(sqrt(p_age_imputed) - sqrt(ego.age))
+           )]
+
+anl[, .(abs_agediff, abs_sqrt_agediff)]
+
+# @TODO: the paste0(id, pid) doesn't drop rows that should be dropped
+# missing imputed partner age, among egos with partnerships
+# 1.8% of eligible observations
+anl[!is.na(nn), sum(is.na(p_age_imputed)) / unql(paste0(id, pid))]
+
+print(names(anl))
+
+
+# %% RACE/ETHNICITY ------------------------------------------------------------
+
+# Create partner version of race.cat
+racematch <- c("1" = "other",
+               "2" = "black",
+               "3" = "white",
+               "4" = "other",
+               "5" = "other",
+               "6" = "other")
+
+# @NOTE:
+#  - Default to reported race/ethnicity if hispanic indicator missing
+anl[, p_race.cat := ifelse(
+        p_hisp == 0 | is.na(p_hisp),
+        racematch[p_race],
+        "hispanic"
+        )]
+
+anl[, .(id,
+        pid,
+        nn,
+        p_hisp,
+        p_race,
+        p_race.cat)]
+
+anl[, .N, .(id)][, summary(N)]
+
+dfSummary(anl, plain.ascii = T, graph.col = F)
+
+# %% IMPUTE RACE/ETHNICITY -----------------------------------------------------
+
+# @NOTE 2020-01-28
+# holding off for now on this; might not be necessary
+
+
+# %% WRITE LONG DATASET --------------------------------------------------------
+
+fwrite(anl, paste0(Sys.getenv("ARTNET_PATH"), "/artnet-long-cleaned.csv"))
+
+
+# @TODO 2020-02-17: Move code below to NetStats
 
 # %% MAIN AND CAUSAL PARTNERSHIPS ----------------------------------------------
 
@@ -512,112 +617,6 @@ print(durats)
 ponetime <- anl[ptype == 3, .N, .(id, psubtype, ptype)]
 
 
-# %% IMPUTE AGE --------------------------------------------------------------
-
-# Source for age imputation:
-
-# Weiss KM, Goodreau SM, Morris M, Prasad P, Ramaraju R, Sanchez T, et al.
-# Egocentric Sexual Networks of Men Who Have Sex with Men in the United States:
-# Results from the ARTnet Study. medRxiv. 2019. doi:10.1101/19010579
-
-# @NOTE: My method varied slightly from theirs
-
-plot(density(anl$p_age, na.rm = T))
-anl[, .N, key = p_age]
-
-# set age == 0 to missing
-anl[, p_age := ifelse(p_age == 0, NA, p_age)]
-print(anl[, .(id, p_age)])
-
-sum(is.na(anl$p_age))
-
-anl[is.na(p_age) & is.na(p_relage), sum(.N)]
-anl[, .N, key = p_relage] %>% print
-class(anl$p_age)
-
-# Based on PARTXRELAGE (ART-Net survey)
-set.seed(1998)
-
-anl[, p_age_imputed := dplyr::case_when(
-          p_relage == 1 ~ ego.age - sample(size = 1, x = 10:15),
-          p_relage == 2 ~ ego.age - sample(size = 1, x = 2:10),
-          p_relage == 3 ~ ego.age + sample(size = 1, x = -1:1),
-          p_relage == 4 ~ ego.age + sample(size = 1, x = 2:10),
-          p_relage == 5 ~ ego.age + sample(size = 1, x = 10:15),
-          !is.na(p_age) ~ p_age,
-          TRUE ~ NA_integer_),
-      .(id, pid)] %>%
-  .[, p_age5 := dplyr::case_when(
-          p_age_imputed <= 24 ~ 1,
-          p_age_imputed >= 25 & p_age_imputed <= 34 ~ 2,
-          p_age_imputed >= 35 & p_age_imputed <= 44 ~ 3,
-          p_age_imputed >= 45 & p_age_imputed <= 54 ~ 4,
-          p_age_imputed >= 55 ~ 5,
-          TRUE ~ NA_real_
-    )]
-
-print(anl[, .(p_age, p_age_imputed)])
-
-anl[, .(agediff = p_age_imputed - ego.age),
-      key = p_relage] %>%
-  .[, .(min = min(agediff),
-        max = max(agediff)),
-      key = p_relage]
-
-
-# %% CALCULATE AGE DIFFERENCES -------------------------------------------------
-
-# calculate age differences
-anl[, ":="(abs_agediff = abs(p_age_imputed - ego.age),
-           abs_sqrt_agediff = abs(sqrt(p_age_imputed) - sqrt(ego.age))
-           )]
-
-anl[, .(abs_agediff, abs_sqrt_agediff)]
-
-# @TODO: the paste0(id, pid) doesn't drop rows that should be dropped
-# missing imputed partner age, among egos with partnerships
-# 1.8% of eligible observations
-anl[!is.na(nn), sum(is.na(p_age_imputed)) / unql(paste0(id, pid))]
-
-print(names(anl))
-
-
-# %% RACE/ETHNICITY ------------------------------------------------------------
-
-# Create partner version of race.cat
-racematch <- c("1" = "other",
-               "2" = "black",
-               "3" = "white",
-               "4" = "other",
-               "5" = "other",
-               "6" = "other")
-
-# @NOTE:
-#  - Default to reported race/ethnicity if hispanic indicator missing
-anl[, p_race.cat := ifelse(
-        p_hisp == 0 | is.na(p_hisp),
-        racematch[p_race],
-        "hispanic"
-        )]
-
-anl[, .(id,
-        pid,
-        nn,
-        p_hisp,
-        p_race,
-        p_race.cat)]
-
-anl[, .N, .(id)][, summary(N)]
-
-dfSummary(anl, plain.ascii = T, graph.col = F)
-
-
-# # %% IMPUTE RACE/ETHNICITY ---------------------------------------------------
-
-# @NOTE 2020-01-28
-# holding off for now on this; might not be necessary
-
-
 # %% CALCULATE MAIN AND CASUAL DEGREE ------------------------------------------
 
 # Main and causal partnerships (ongoing)
@@ -689,7 +688,7 @@ deg_data[, .N, maincasl_conc_ind][, P := N / sum(N)] %>% print
 # dfSummary(onetime_data, graph.col = F)
 
 
-# %% INSPECT DEGREE/ONETIME DATASETS -------------------------------------------
+# %% INSPECT DEGREE/ONETIME DATASETS ---------------------------------------------
 
 # oa = oral and anal sex partnership
 # ao = anal-only partnership
@@ -715,44 +714,182 @@ pcols <- c("id",
            "ptype",
            "psubtype",
            "p_race.cat",
+           "p_age5",
            "p_hiv",
            names(anl)[grep("^ego", names(anl))])
+
+
+# %% RACE MIXING -----------------------------------------------------------------
 
 mp <- anl[ptype == 1 & p_ongoing_ind == 1, ..pcols]
 cp <- anl[ptype == 2 & p_ongoing_ind == 1, ..pcols]
 
-print(mp)
-print(cp)
+# Mixing matrix, main partnership
 
 mp_racemix <- mp[, ctable(ego.race.cat, p_race.cat, prop = "n", useNA = "no")]
-cp_racemix <- cp[, ctable(ego.race.cat, p_race.cat, prop = "n", useNA = "no")]
-
+mp_mixmat <- with(mp, round(prop.table(table(ego.race.cat, p_race.cat)), 3))
 print(mp_racemix)
+
+# Mixing matrix, casual partnership
+
+cp_racemix <- cp[, ctable(ego.race.cat, p_race.cat, prop = "n", useNA = "no")]
+cp_mixmat <- with(cp, round(prop.table(table(ego.race.cat, p_race.cat)), 3))
 print(cp_racemix)
 
-mp_racesummary <- mp[, .N, .(ego.race.cat, p_race.cat)] %>%
- .[, P := N / sum(N), .(ego.race.cat)] %>%
- na.omit
+# Partner race probabilities, main partnerships
 
-mp_racesummary[order(ego.race.cat, p_race.cat)] %>%
-  .[, P := round(P, 3)] %>%
-  print
+mp_racematch <- mp[!is.na(p_race.cat)] %>%
+ .[, samerace := ifelse(ego.race.cat == p_race.cat, 1, 0)] %>%
+ .[, .N, by = "samerace"] %>%
+ .[, P := round(N / sum(N), 4)]
 
-ggplot(data = mp_racesummary,
-       mapping = aes(x = ego.race.cat,
-                     y = P,
-                     group = p_race.cat,
-                     fill = p_race.cat)) +
-  geom_col(position = "dodge",
-           col = "white",
-           width = 0.3) +
-  scale_fill_viridis_d(name = "Partner\nRace/ethnicity") +
-  labs(x = "Ego Race/ethnicity",
-       y = "Probability") +
-  theme_classic()
+print(mp_racematch)
+
+# Partner race probabilities, casual partnerships
+
+cp_racematch <- cp[!is.na(p_race.cat)] %>%
+ .[, samerace := ifelse(ego.race.cat == p_race.cat, 1, 0)] %>%
+ .[, .N, by = "samerace"] %>%
+ .[, P := round(N / sum(N), 4)]
+
+print(cp_racematch)
+
+# plot mixing proportions by ego raceeth
+# plotmixing <- function(mixdat, title) {
+#   ggplot(data = mixdat,
+#          mapping = aes(x = ego.race.cat,
+#                        y = P,
+#                        group = p_race.cat,
+#                        fill = p_race.cat)) +
+#     geom_col(position = "dodge",
+#              col = "white",
+#              width = 0.3) +
+#     scale_fill_viridis_d(name = "Partner\nRace/ethnicity") +
+#     labs(x = "Ego Race/ethnicity",
+#          y = "Probability",
+#          title = title) +
+#     theme_classic()
+# }
+#
+# plotmixing(mp_racesummary, "Mixing in main partnerships")
+# plotmixing(cp_racesummary, "Mixing in casual partnerships")
 
 
-# %% PARTNERSHIP REUSABLES -----------------------------------------------------
+# %% AGE MIXING ------------------------------------------------------------------
+
+# Mixing
+
+mp_agemix <- mp[!is.na(p_age5)] %>%
+  .[, .N, keyby = .(ego.age5, p_age5)] %>%
+  .[, ":=" (minage = min(ego.age5, p_age5),
+            maxage = max(ego.age5, p_age5)), by = 1:nrow(.)] %>%
+  .[, agecomb := paste0(minage, maxage)] %>%
+  .[, .(N = sum(N)), agecomb] %>%
+  .[, P := round(N / sum(N), 4)]
+
+print(mp_agemix)
+
+cp_agemix <- cp[!is.na(p_age5)] %>%
+  .[, .N, keyby = .(ego.age5, p_age5)] %>%
+  .[, ":=" (minage = min(ego.age5, p_age5),
+            maxage = max(ego.age5, p_age5)), by = 1:nrow(.)] %>%
+  .[, agecomb := paste0(minage, maxage)] %>%
+  .[, .(N = sum(N)), agecomb] %>%
+  .[, P := round(N / sum(N), 4)]
+
+print(cp_agemix)
+
+# Matching
+
+mp_age5match <- mp[!is.na(p_age5)] %>%
+  .[, .N, keyby = .(ego.age5, p_age5)] %>%
+  .[, sameage := ifelse(ego.age5 == p_age5, 1, 0)] %>%
+  .[, .(N = sum(N)), sameage] %>%
+  .[, P := round(N / sum(N), 4)]
+
+print(mp_age5match)
+
+cp_age5match <- cp[!is.na(p_age5)] %>%
+  .[, .N, keyby = .(ego.age5, p_age5)] %>%
+  .[, sameage := ifelse(ego.age5 == p_age5, 1, 0)] %>%
+  .[, .(N = sum(N)), sameage] %>%
+  .[, P := round(N / sum(N), 4)]
+
+print(cp_age5match)
+
+
+# %% EGO SEX ROLE ----------------------------------------------------------------
+
+# @TODO:
+# - Impute missing anal.sex.role
+
+
+# Overall (among ids with main or casual partnerships)
+
+mc_analrole <- dcast(anl[ptype %in% 1:2],
+                     id ~ ego.anal.role,
+                     value.var = "ego.anal.role") %>%
+  .[, anal.sex.role := case_when(
+    Versatile > 0 | (Insertive == 1 & Receptive == 1) ~ "V",
+    Receptive > 0 & (Insertive == 0 & Versatile == 0) ~ "R",
+    Insertive > 0 & (Receptive == 0 & Versatile == 0) ~ "I",
+    TRUE ~ NA_character_
+  )]
+
+# about 11% missing, ego-wise
+mc_analrole[, .N, anal.sex.role][, P := N / sum(N)] %>% print
+
+mc_analrole <- mc_analrole[!is.na(anal.sex.role),
+                           .N, anal.sex.role][, P := N / sum(N)]
+
+print(mc_analrole)
+
+# Main Partnerships
+
+# between 9-10% missing, partnership-wise
+table(is.na(mp$ego.anal.role))
+
+
+mp_analrole <- dcast(mp, id ~ ego.anal.role, value.var = "ego.anal.role") %>%
+  .[, anal.sex.role := case_when(
+    Versatile > 0 | (Insertive == 1 & Receptive == 1) ~ "V",
+    Receptive > 0 & (Insertive == 0 & Versatile == 0) ~ "R",
+    Insertive > 0 & (Receptive == 0 & Versatile == 0) ~ "I",
+    TRUE ~ NA_character_
+  )]
+
+# about 9% missing, ego-wise
+mp_analrole[, .N, anal.sex.role][, P := N / sum(N)] %>% print
+
+mp_analrole <- mp_analrole[!is.na(anal.sex.role),
+                           .N, anal.sex.role][, P := N / sum(N)]
+
+print(mp_analrole)
+
+
+# Casual Partnerships
+
+# about 21% missing, partnership-wise
+table(is.na(cp$ego.anal.role))
+
+cp_analrole <- dcast(cp, id ~ ego.anal.role, value.var = "ego.anal.role") %>%
+  .[, anal.sex.role := case_when(
+    Versatile > 0 | (Insertive == 1 & Receptive == 1) ~ "V",
+    Receptive > 0 & (Insertive == 0 & Versatile == 0) ~ "R",
+    Insertive > 0 & (Receptive == 0 & Versatile == 0) ~ "I",
+    TRUE ~ NA_character_
+  )]
+
+# about 16% missing, ego-wise
+cp_analrole[, .N, anal.sex.role][, P := N / sum(N)] %>% print
+
+cp_analrole <- cp_analrole[!is.na(anal.sex.role),
+                           .N, anal.sex.role][, P := N / sum(N)]
+
+print(cp_analrole)
+
+
+# %% PARTNERSHIP REUSABLES -------------------------------------------------------
 
 race_unq <- data.table(race.cat = sort(unique(deg_data$race.cat)))
 age5_unq <- data.table(age5 = sort(unique(deg_data$age5)))
@@ -766,7 +903,7 @@ casual_deg_unq <- data.table(degcasl = sort(unique(deg_data$degcasl)))
 cilabs <- c("ll95", "ul95")
 
 
-# %% MAIN PARTNERSHIPS ---------------------------------------------------------
+# %% MAIN PARTNERSHIPS -----------------------------------------------------------
 
 # Fits
 fit_main_deg_byrace <- glm(degmain ~ race.cat,
@@ -800,6 +937,7 @@ main_deg_bycasldeg_preds <- add_ci(casual_deg_unq,
                                    fit_main_deg_bycasl,
                                    names = cilabs)
 print(main_deg_bycasldeg_preds)
+
 
 main_concurrent_prob <- deg_data[, mean(main_conc_ind)]
 round(main_concurrent_prob, 3)
@@ -880,6 +1018,7 @@ print(main_predictions)
 
 casl_predictions <- list()
 
+# degree
 casl_predictions$deg_byrace <- casl_deg_byrace_preds
 casl_predictions$deg_byage5 <- casl_deg_byage5_preds
 casl_predictions$deg_bymaindegt2 <- casl_deg_bymaindegt2_preds
@@ -890,8 +1029,30 @@ casl_predictions$absdiff_sqrtage <- anl[ptype == 2,
 
 print(casl_predictions)
 
-netstats <- list(main = main_predictions,
-                 casl = casl_predictions)
+netstats <- list(
+  demo = list(ai.role.pr = mc_analrole),
+  main = main_predictions,
+  casl = casl_predictions)
+
+
+
+# Other network stats
+
+# race matches
+netstats$main$racematch <- mp_racematch
+netstats$casl$racematch <- cp_racematch
+
+# age mixing
+netstats$main$agemix <- mp_agemix
+netstats$casl$agemix <- cp_agemix
+
+# age5 matches
+netstats$main$age5match <- mp_age5match
+netstats$casl$age5match <- mp_age5match
+
+# anal sex role
+netstats$main$ai.role <- mp_analrole
+netstats$casl$ai.role <- cp_analrole
 
 print(netstats)
 
