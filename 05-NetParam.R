@@ -16,6 +16,7 @@ unql <- function(data) length(unique(data))
 an <- fread(paste0(Sys.getenv("ARTNET_PATH"), "/artnet-wide-cleaned.csv"))
 anl <- fread(paste0(Sys.getenv("ARTNET_PATH"), "/artnet-long-cleaned.csv"))
 
+
 # %% MAIN AND CAUSAL PARTNERSHIPS ----------------------------------------------
 
 egos <- length(unique(anl$id))
@@ -85,6 +86,7 @@ maincas_ong[,
   by = .(id, pid)]
 
 maincas_ong[is.na(p_startdt)] %>% print
+maincas_ong[!is.na(p_startdt)] %>% print
 
 datecols <- c("ptype", "p_startyyyy", "p_startyyyydk", "p_startmm", "p_startdt")
 
@@ -119,8 +121,8 @@ maincas_ong[, table(durat_wks < 0)]
 
 ggplot(maincas_ong,
        aes(x = durat_wks)) +
-       geom_density() +
-       facet_wrap(~ ptype) +
+       geom_histogram(col = "black", fill = "aliceblue") +
+       facet_wrap(~ ptype, nrow = 2) +
        theme_clean()
 
 fit_all_dur <- maincas_ong[, glm(durat_wks ~ 1, family = "quasipoisson")]
@@ -143,6 +145,7 @@ durats$ptype <- c("overall", "main", "casual")
 setDT(durats)
 
 print(durats)
+
 
 # %% ONE-TIME PARTNERSHIPS -----------------------------------------------------
 
@@ -279,17 +282,17 @@ deg_data[, ":="(
       oralanal_2 = ifelse(is.na(oralanal_2), 0, oralanal_2), # casual, oral-anal
       oralonly_2 = ifelse(is.na(oralonly_2), 0, oralonly_2)  # casual, oral-only
     )] %>%
-  # main degree
-  .[, degmain := analonly_1 + oralanal_1 + oralonly_1] %>%
-  .[, degmain_trunc2 := ifelse(degmain >= 2, 2, degmain)] %>%
-  # casual degree
-  .[, degcasl := analonly_2 + oralanal_2 + oralonly_2] %>%
-  # total degree (main + casual)
-  .[, degtotal := degmain + degcasl] %>%
-  # concurrency indicators
-  .[, main_conc_ind := ifelse(degmain >= 2, 1, 0)] %>%
-  .[, casl_conc_ind := ifelse(degcasl >= 2, 1, 0)] %>%
-  .[, maincasl_conc_ind := degtotal > 1]
+    # main degree
+    .[, degmain := analonly_1 + oralanal_1 + oralonly_1] %>%
+    .[, degmain_trunc2 := ifelse(degmain >= 2, 2, degmain)] %>%
+    # casual degree
+    .[, degcasl := analonly_2 + oralanal_2 + oralonly_2] %>%
+    # total degree (main + casual)
+    .[, degtotal := degmain + degcasl] %>%
+    # concurrency indicators
+    .[, main_conc_ind := ifelse(degmain >= 2, 1, 0)] %>%
+    .[, casl_conc_ind := ifelse(degcasl >= 2, 1, 0)] %>%
+    .[, maincasl_conc_ind := degtotal > 1]
 
 str(deg_data)
 
@@ -301,6 +304,43 @@ deg_data[, .N, main_conc_ind][, P := N / sum(N)] %>% print
 deg_data[, .N, keyby = degcasl][, P := N / sum(N)] %>% print
 deg_data[, .N, casl_conc_ind][, P := N / sum(N)] %>% print
 deg_data[, .N, maincasl_conc_ind][, P := N / sum(N)] %>% print
+
+names(deg_data)
+
+# create dummy variables for main and casl degrees
+deg_data %>%
+  .[, ":="(
+      casl0 = dplyr::case_when(degcasl == 0 ~ 1,
+                               degcasl %in% 1:5 ~ 0,
+                               TRUE ~ NA_real_),
+      casl1 = dplyr::case_when(degcasl == 1 ~ 1,
+                               degcasl %in% c(0, 2:5) ~ 0,
+                               TRUE ~ NA_real_),
+      casl2 = dplyr::case_when(degcasl == 2 ~ 1,
+                               degcasl %in% c(0:1, 3:5) ~ 0,
+                               TRUE ~ NA_real_),
+      casl3 = dplyr::case_when(degcasl == 3 ~ 1,
+                               degcasl %in% c(0:2, 4:5) ~ 0,
+                               TRUE ~ NA_real_),
+      casl4 = dplyr::case_when(degcasl == 4 ~ 1,
+                               degcasl %in% c(0:3, 5) ~ 0,
+                               TRUE ~ NA_real_),
+      casl5 = dplyr::case_when(degcasl == 5 ~ 1,
+                               degcasl %in% 0:4 ~ 0,
+                               TRUE ~ NA_real_),
+      main0 = dplyr::case_when(degmain_trunc2 == 0 ~ 1,
+                               degmain_trunc2 %in% 1:2 ~ 0,
+                               TRUE ~ NA_real_),
+      main1 = dplyr::case_when(degmain_trunc2 == 1 ~ 1,
+                               degmain_trunc2 %in% c(0, 2) ~ 0,
+                               TRUE ~ NA_real_),
+      main2 = dplyr::case_when(degmain_trunc2 == 2 ~ 1,
+                               degmain_trunc2 %in% 0:1 ~ 0,
+                               TRUE ~ NA_real_)
+    )]
+
+print(deg_data)
+
 
 # # if initial casual estimate missing, assign casual_init degree as 0
 # deg_data[is.na(casl_init), casl_init := 0]
@@ -327,7 +367,7 @@ deg_data[, .N, maincasl_conc_ind][, P := N / sum(N)] %>% print
 # dfSummary(onetime_data, graph.col = F)
 
 
-# %% INSPECT DEGREE/ONETIME DATASETS ---------------------------------------------
+# %% INSPECT DEGREE/ONETIME DATASETS -------------------------------------------
 
 # oa = oral and anal sex partnership
 # ao = anal-only partnership
@@ -358,7 +398,7 @@ pcols <- c("id",
            names(anl)[grep("^ego", names(anl))])
 
 
-# %% RACE MIXING -----------------------------------------------------------------
+# %% RACE MIXING ---------------------------------------------------------------
 
 mp <- anl[ptype == 1 & p_ongoing_ind == 1, ..pcols]
 cp <- anl[ptype == 2 & p_ongoing_ind == 1, ..pcols]
@@ -414,7 +454,7 @@ print(cp_racematch)
 # plotmixing(cp_racesummary, "Mixing in casual partnerships")
 
 
-# %% AGE MIXING ------------------------------------------------------------------
+# %% AGE MIXING ----------------------------------------------------------------
 
 # Mixing
 
@@ -446,6 +486,8 @@ mp_age5match <- mp[!is.na(p_age5)] %>%
   .[, .(N = sum(N)), sameage] %>%
   .[, P := round(N / sum(N), 4)]
 
+mp_age5match
+
 print(mp_age5match)
 
 cp_age5match <- cp[!is.na(p_age5)] %>%
@@ -457,11 +499,10 @@ cp_age5match <- cp[!is.na(p_age5)] %>%
 print(cp_age5match)
 
 
-# %% EGO SEX ROLE ----------------------------------------------------------------
+# %% EGO SEX ROLE --------------------------------------------------------------
 
 # @TODO:
 # - Impute missing anal.sex.role
-
 
 # Overall (among ids with main or casual partnerships)
 
@@ -528,7 +569,7 @@ cp_analrole <- cp_analrole[!is.na(anal.sex.role),
 print(cp_analrole)
 
 
-# %% PARTNERSHIP REUSABLES -------------------------------------------------------
+# %% PARTNERSHIP REUSABLES -----------------------------------------------------
 
 race_unq <- data.table(race.cat = sort(unique(deg_data$race.cat)))
 age5_unq <- data.table(age5 = sort(unique(deg_data$age5)))
@@ -542,83 +583,175 @@ casual_deg_unq <- data.table(degcasl = sort(unique(deg_data$degcasl)))
 cilabs <- c("ll95", "ul95")
 
 
-# %% MAIN PARTNERSHIPS -----------------------------------------------------------
+# %% MAIN PARTNERSHIPS ---------------------------------------------------------
 
-# Fits
-fit_main_deg_byrace <- glm(degmain ~ race.cat,
-                           data = deg_data,
-                           family = "quasipoisson")
+ra_grid <- expand.grid(race.cat = unlist(race_unq),
+                       age5 = unlist(age5_unq))
 
-fit_main_deg_byage5 <- glm(degmain ~ factor(age5),
-                           data = deg_data,
-                           family = "quasipoisson")
+## ... PROBS FOR SEEDING MAIN DEGREE
 
-fit_main_deg_bycasl <- glm(degmain ~ factor(degcasl),
-                           data = deg_data,
-                           family = "quasipoisson")
+# main degree dummies
+main_bin <- names(deg_data)[grepl("main[0-2]{1}", names(deg_data))]
 
-# Predictions
+# function to generate predictions
+predict_degree_prob <- function(yvar, xvar, dat, newdat) {
+  y <- yvar
+  x <- paste(xvar, collapse = "+")
 
-## nodefactor("race")
-main_deg_byrace_preds <- add_ci(race_unq,
-                                fit_main_deg_byrace,
-                                names = cilabs)
-print(main_deg_byrace_preds)
+  fit <- glm(paste(y, "~", x), data = dat, family = "binomial")
+  preds <- predict(fit, newdat, type = "response")
 
-## nodefactor("age5")
-main_deg_byage5_preds <- add_ci(age5_unq,
-                                fit_main_deg_byage5,
-                                names = cilabs)
-print(main_deg_byage5_preds)
+  as.data.table(cbind(newdat, preds, outcome = y))
 
-## nodefactor("degcasl")
-main_deg_bycasldeg_preds <- add_ci(casual_deg_unq,
-                                   fit_main_deg_bycasl,
-                                   names = cilabs)
-print(main_deg_bycasldeg_preds)
+}
+
+# used to estimate the distribution of main degree
+# marginalized over race and age (used for seeding population)
+mainprob_by_ra <- lapply(main_bin, function(x) {
+  predict_degree_prob(
+    yvar = x,
+    xvar = c("race.cat", "factor(age5)"),
+    dat = deg_data,
+    newdat = ra_grid
+  )
+})
 
 
+## ... EXPECTED MAIN DEGREE (BY RACE AND AGE)
+
+# fit total degree as a function of race and age
+fit_mdeg_total <- glm(
+  degmain_trunc2 ~ race.cat + factor(age5),
+  data = deg_data,
+  family = "quasipoisson"
+)
+
+summary(fit_mdeg_total)
+
+# predict race-and-age-specific main degree
+pred_mdeg_byra <- predict(
+  fit_mdeg_total,
+  newdata = ra_grid,
+  type = "response"
+)
+
+pred_mdeg_byra <- cbind(ra_grid, pred_mdeg_byra)
+
+
+# fit main degree as a function of casual degree
+fit_mdeg_bycasl <- glm(
+  degmain_trunc2 ~ factor(degcasl),
+  data = deg_data,
+  family = "quasipoisson"
+)
+
+summary(fit_mdeg_bycasl)
+
+## .. EXPECTED MAIN DEGRE (BY CASUAL DEGREE)
+
+# predict casual-degree-specific main degree
+pred_mdeg_bycasl <- predict(
+  fit_mdeg_bycasl,
+  newdata = casual_deg_unq,
+  type = "response"
+)
+
+pred_mdeg_bycasl <- cbind(casual_deg_unq, pred_mdeg_bycasl)
+print(pred_mdeg_bycasl)
+
+# ... MAIN CONCURRENCY
+
+# proportion of individuals with concurrent main partnerships
 main_concurrent_prob <- deg_data[, mean(main_conc_ind)]
 round(main_concurrent_prob, 3)
+
+# ... MAIN RELATIONSHIP DURATION
+
+# average duration (in weeks)
+main_durat_wks <- durats[ptype == "main", pred]
+print(main_durat_wks)
 
 
 # %% CASUAL PARTNERSHIPS -------------------------------------------------------
 
-# Fits
-fit_casl_deg_byrace <- glm(degcasl ~ race.cat,
-                           data = deg_data,
-                           family = "quasipoisson")
+## ... PROBS FOR SEEDING CASUAL DEGREE
 
-fit_casl_deg_byage5 <- glm(degcasl ~ factor(age5),
-                           data = deg_data,
-                           family = "quasipoisson")
+# casual degree dummies
+casl_bin <- names(deg_data)[grepl("casl[0-5]{1}", names(deg_data))]
 
-fit_casl_deg_bymaint2 <- glm(degcasl ~ factor(degmain_trunc2),
-                             data = deg_data,
-                             family = "quasipoisson")
+caslprob_by_ra <- lapply(casl_bin, function(x) {
+    predict_degree_prob(yvar = x,
+                        xvar = c("race.cat",
+                                 "factor(age5)"),
+                        dat = deg_data,
+                        newdat = ra_grid)
+  })
 
-# Predictions
+caslprob_by_ra %>% print
 
-## nodefactor("race")
-casl_deg_byrace_preds <- add_ci(race_unq,
-                                fit_casl_deg_byrace,
-                                names = cilabs)
-print(casl_deg_byrace_preds)
+# used to estimate the distribution of casual degree
+# marginalized over race and age (used for seeding population)
+caslprob_by_ra <- lapply(casl_bin, function(x) {
+  predict_degree_prob(
+    yvar = x,
+    xvar = c("race.cat", "factor(age5)"),
+    dat = deg_data,
+    newdat = ra_grid
+  )
+})
 
-## nodefactor("age5")
-casl_deg_byage5_preds <- add_ci(age5_unq,
-                                fit_casl_deg_byage5,
-                                names = cilabs)
-print(casl_deg_byage5_preds)
+print(caslprob_by_ra)
 
-## nodefactor("degmain")
-casl_deg_bymaindegt2_preds <- add_ci(main_degt2_unq,
-                                   fit_casl_deg_bymaint2,
-                                   names = cilabs)
-print(casl_deg_bymaindegt2_preds)
+# ... EXPECTED CASUAL DEGREE (BY RACE AND AGE)
 
+# fit total degree as a function of race and age
+fit_cdeg_total <- glm(
+  degcasl ~ race.cat + factor(age5),
+  data = deg_data,
+  family = "quasipoisson")
+
+summary(fit_cdeg_total)
+
+# predict race-and-age-specific casual degree
+pred_cdeg_byra <- predict(
+  fit_cdeg_total,
+  newdata = ra_grid,
+  type = "response"
+)
+
+pred_cdeg_byra <- cbind(ra_grid, pred_cdeg_byra)
+print(pred_cdeg_byra)
+
+# ... EXPECTED CASUAL DEGREE (BY MAIN DEGREE)
+
+fit_cdeg_bymain <- glm(
+  degcasl ~ factor(degmain_trunc2),
+  data = deg_data,
+  family = "quasipoisson"
+)
+
+summary(fit_cdeg_bymain)
+
+pred_cdeg_bymain <- predict(
+  fit_cdeg_bymain,
+  newdata = main_degt2_unq,
+  type = "response"
+)
+
+pred_cdeg_bymain <- cbind(main_degt2_unq, pred_cdeg_bymain)
+print(pred_cdeg_bymain)
+
+# ... CASUAL CONCURRENCY
+
+# proportion of individuals with concurrent casual partnerships
 casl_concurrent_prob <- deg_data[, mean(casl_conc_ind)]
 round(casl_concurrent_prob, 3)
+
+# ... CASUAL RELATIONSHIP DURATION
+
+# average duration (in weeks)
+casl_durat_wks <- durats[ptype == "casual", pred]
+print(casl_durat_wks)
 
 
 # %% WRITE SUMMARIES -----------------------------------------------------------
@@ -634,65 +767,48 @@ casl_summaries <- list(sum_casl_total = sum_casl_total,
                        sum_casl_ao    = sum_casl_ao,
                        sum_casl_oo    = sum_casl_oo)
 
-saveRDS(list(main_summaries = main_summaries,
-             casl_summaries = casl_summaries),
+saveRDS(list(main_artnet_sum = main_summaries,
+             casl_artnet_sum = casl_summaries),
         file = "netstats/aggregate_degree_summaries.Rds")
 
 # Main predictions
 
-main_predictions <- list()
-
-# degree
-main_predictions$deg_byrace <- main_deg_byrace_preds
-main_predictions$deg_byage5 <- main_deg_byage5_preds
-main_predictions$deg_bycasltot <- main_deg_bycasldeg_preds
-main_predictions$concurrent_prob <- main_concurrent_prob
-main_predictions$mean_durat_wks <- durats[ptype == "main", pred]
-main_predictions$absdiff_sqrtage <- anl[ptype == 1,
-                                        mean(abs_sqrt_agediff, na.rm = T)]
-
-print(main_predictions)
+main_pred_probs <- mainprob_by_ra %>% rbindlist
+main_pred_degbyra <- as.data.table(pred_mdeg_byra)
+main_pred_degbycasl <- as.data.table(pred_mdeg_bycasl)
 
 # Casual predictions
 
-casl_predictions <- list()
+casl_pred_probs <- caslprob_by_ra %>% rbindlist
+casl_pred_degbyra <- as.data.table(pred_cdeg_byra)
+casl_pred_degbymain <- as.data.table(pred_cdeg_bymain)
 
-# degree
-casl_predictions$deg_byrace <- casl_deg_byrace_preds
-casl_predictions$deg_byage5 <- casl_deg_byage5_preds
-casl_predictions$deg_bymaindegt2 <- casl_deg_bymaindegt2_preds
-casl_predictions$mean_durat_wks <- durats[ptype == "casual", pred]
-casl_predictions$concurrent_prob <- casl_concurrent_prob
-casl_predictions$absdiff_sqrtage <- anl[ptype == 2,
-                                        mean(abs_sqrt_agediff, na.rm = T)]
 
-print(casl_predictions)
+nparams <- list(
 
-netstats <- list(
   demo = list(ai.role.pr = mc_analrole),
-  main = main_predictions,
-  casl = casl_predictions)
 
+  main = list(degprob = main_pred_probs,
+              degpred_byra = main_pred_degbyra,
+              degpred_bycasl = main_pred_degbycasl,
+              concurrent = main_concurrent_prob,
+              racematch = mp_racematch,
+              age5match = mp_age5match,
+              durat_wks = main_durat_wks,
+              role.class = mp_analrole
+            ),
 
+  casl = list(degprob = casl_pred_probs,
+              degpred_byra = casl_pred_degbyra,
+              degpred_bymain = casl_pred_degbymain,
+              concurrent = casl_concurrent_prob,
+              racematch = cp_racematch,
+              age5match = cp_age5match,
+              durat_wks = casl_durat_wks,
+              role.class = cp_analrole
+            )
+)
 
-# Other network stats
+print(nparams)
 
-# race matches
-netstats$main$racematch <- mp_racematch
-netstats$casl$racematch <- cp_racematch
-
-# age mixing
-netstats$main$agemix <- mp_agemix
-netstats$casl$agemix <- cp_agemix
-
-# age5 matches
-netstats$main$age5match <- mp_age5match
-netstats$casl$age5match <- mp_age5match
-
-# anal sex role
-netstats$main$ai.role <- mp_analrole
-netstats$casl$ai.role <- cp_analrole
-
-print(netstats)
-
-saveRDS(netstats, file = "netstats/predictions.Rds")
+saveRDS(nparams, file = "netstats/predictions.Rds")
