@@ -442,7 +442,7 @@ for (i in 1:(length(mort_rates_annual_raspec) - 1)) {
 }
 
 # Mortality Rate (Weekly, population margin)
-out$demog$mortate.marginal <- round(
+out$demog$mortrate.marginal <- round(
   1 - (1 - mort_rate_annual_popmargin) ^ (1 / 52), digits = 6
 )
 
