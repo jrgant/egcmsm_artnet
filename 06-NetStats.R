@@ -454,9 +454,7 @@ for (i in 1:length(role.class.lvls)) {
 
 print(out$demog)
 
-
-
-# ... NETWORK MODEL TARGETS
+# ... NETWORK MODEL TARGETS (MAIN PARTNERSHIPS)
 
 out$netmain <- list()
 out$netmain$edges <- edges_main
@@ -467,6 +465,19 @@ out$netmain$nodematch_race.eth <- nodematch_race.eth_main
 out$netmain$nodematch_age5 <- nodematch_age5_main
 out$netmain$concurrent <- concurrent_main
 out$netmain$durat_wks <- durat_wks_main
+
+# ... NETWORK MODEL TARGETS (CASUAL PARTNERSHIPS)
+
+out$netcasl <- list()
+out$netcasl$edges <- edges_casl
+out$netcasl$nodefactor_race <- nodefactor_race_casl
+out$netcasl$nodefactor_age5 <- nodefactor_age5_casl
+out$netcasl$nodefactor_degmain <- nodefacter_degmain_casl
+out$netcasl$nodematch_race.eth <- nodematch_race.eth_casl
+out$netcasl$nodematch_age5 <- nodematch_age5_casl
+out$netcasl$concurrent <- concurrent_casl
+out$netcasl$durat_wks <- durat_wks_casl
+
 
 # ... STORE ATTRIBUTES
 
@@ -479,7 +490,7 @@ out$attr$deg.main <- attr_deg.main
 out$attr$deg.casl <- attr_deg.casl
 out$attr$role.class <- attr_role.class
 
-out$attr
+# print(out$attr)
 
 # ... WRITE
 
