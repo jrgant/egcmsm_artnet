@@ -77,7 +77,6 @@ netest_main <- netest(
   formation = main_formation,
   target.stats = netstats_main,
   coef.diss = coef_diss_main,
-  edapprox = T,
   set.control.ergm = control.ergm(MCMLE.maxit = mcmc.maxiterations)
 )
 
@@ -95,6 +94,10 @@ dx_main <- netdx(
 )
 
 plot(dx_main, qnts = 0.95)
+
+# need to burn in for a long time to assess duration match
+# will be biased downward for early time steps
+plot(dx_main, type = "duration")
 print(dx_main)
 
 saveRDS(netest_main, "netest/netest_main.Rds")
@@ -150,7 +153,6 @@ netest_casl <- netest(
   formation = casl_formation,
   target.stats = netstats_casl,
   coef.diss = coef_diss_casl,
-  edapprox = T,
   set.control.ergm = control.ergm(MCMLE.maxit = mcmc.maxiterations)
 )
 
