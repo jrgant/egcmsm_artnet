@@ -18,6 +18,7 @@ str(degdist)
 pdat <- readRDS("netstats/predictions.Rds")
 str(pdat)
 
+
 # %% INITIALIZE DEMOGRAPHICS ---------------------------------------------------
 
 ## population size
