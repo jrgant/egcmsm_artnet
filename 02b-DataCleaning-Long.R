@@ -371,7 +371,43 @@ sc <- names(anl)[grepl("once", names(anl))][2:7]
 anl[, table(ptype, psubtype, exclude = NULL)]
 
 
-# %% IMPUTE AGE --------------------------------------------------------------
+# %% RACE/ETHNICITY ------------------------------------------------------------
+
+# Create partner version of race.cat
+racematch <- c("1" = "other",
+               "2" = "black",
+               "3" = "white",
+               "4" = "other",
+               "5" = "other",
+               "6" = "other")
+
+# @NOTE:
+#  - Default to reported race/ethnicity if hispanic indicator missing
+anl[, p_race.cat := ifelse(
+        p_hisp == 0 | is.na(p_hisp),
+        racematch[p_race],
+        "hispanic"
+        )]
+
+anl[, .(id,
+        pid,
+        nn,
+        p_hisp,
+        p_race,
+        p_race.cat)]
+
+anl[, .N, .(id)][, summary(N)]
+
+dfSummary(anl, plain.ascii = T, graph.col = F)
+
+
+# %% IMPUTE RACE/ETHNICITY -----------------------------------------------------
+
+# @NOTE 2020-01-28
+# holding off for now on this; might not be necessary
+
+
+# %% IMPUTE PARTNER AGE --------------------------------------------------------
 
 # Source for age imputation:
 
@@ -439,42 +475,6 @@ anl[, .(abs_agediff, abs_sqrt_agediff)]
 anl[!is.na(nn), sum(is.na(p_age_imputed)) / unql(paste0(id, pid))]
 
 print(names(anl))
-
-
-# %% RACE/ETHNICITY ------------------------------------------------------------
-
-# Create partner version of race.cat
-racematch <- c("1" = "other",
-               "2" = "black",
-               "3" = "white",
-               "4" = "other",
-               "5" = "other",
-               "6" = "other")
-
-# @NOTE:
-#  - Default to reported race/ethnicity if hispanic indicator missing
-anl[, p_race.cat := ifelse(
-        p_hisp == 0 | is.na(p_hisp),
-        racematch[p_race],
-        "hispanic"
-        )]
-
-anl[, .(id,
-        pid,
-        nn,
-        p_hisp,
-        p_race,
-        p_race.cat)]
-
-anl[, .N, .(id)][, summary(N)]
-
-dfSummary(anl, plain.ascii = T, graph.col = F)
-
-
-# %% IMPUTE RACE/ETHNICITY -----------------------------------------------------
-
-# @NOTE 2020-01-28
-# holding off for now on this; might not be necessary
 
 
 # %% WRITE LONG DATASET --------------------------------------------------------
