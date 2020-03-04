@@ -433,6 +433,7 @@ class(anl$p_age)
 # Based on PARTXRELAGE (ART-Net survey)
 set.seed(1998)
 
+# impute ages in partnerships where ego provided binned relative age of partner
 anl[, p_age_imputed := dplyr::case_when(
           p_relage == 1 ~ ego.age - sample(size = 1, x = 10:15),
           p_relage == 2 ~ ego.age - sample(size = 1, x = 2:10),
@@ -442,6 +443,8 @@ anl[, p_age_imputed := dplyr::case_when(
           !is.na(p_age) ~ p_age,
           TRUE ~ NA_integer_),
       .(id, pid)] %>%
+  # set lower bound to minimum partner age reported in dataset
+  .[, p_age_imputed := ifelse(p_age_imputed < 11, 11, p_age_imputed)] %>%
   .[, p_age5 := dplyr::case_when(
           p_age_imputed <= 24 ~ 1,
           p_age_imputed >= 25 & p_age_imputed <= 34 ~ 2,
@@ -453,11 +456,20 @@ anl[, p_age_imputed := dplyr::case_when(
 
 print(anl[, .(p_age, p_age_imputed)])
 
+anl[!is.na(p_age), summary(p_age)]
+
+anl[, summary(p_age_imputed)]
+
+anl[p_age_imputed < 15, .(id, pid, ego.age, p_age, p_relage, p_age_imputed)]
+
 anl[, .(agediff = p_age_imputed - ego.age),
       key = p_relage] %>%
   .[, .(min = min(agediff),
         max = max(agediff)),
       key = p_relage]
+
+anl[, table(is.na(p_age_imputed))]
+
 
 
 # %% CALCULATE AGE DIFFERENCES -------------------------------------------------
