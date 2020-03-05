@@ -39,6 +39,7 @@ cat(
 ong_cols <- c("sub_date", "id", "pid",
               "ptype", "psubtype",
               "p_startyyyy", "p_startyyyydk", "p_startmm",
+              "ego.race.cat", "ego.age5",
               "ego.anal.role")
 
 maincas_ong <- anl[ptype %in% 1:2 & p_ongoing_ind == 1, .N, ong_cols]
@@ -114,7 +115,7 @@ maincas_ong[, durat_wks := round(durat_days / 7)]
 class(maincas_ong$durat_days)
 class(maincas_ong$durat_wks)
 
-maincas_ong[, .(id, pid, p_startyyyy, p_startmm,
+maincas_ong[, .(id, pid, ego.race.cat, ego.age5, p_startyyyy, p_startmm,
                 p_startdt, sub_date, durat_days, durat_wks)]
 
 maincas_ong[, table(durat_wks < 0)]
@@ -125,8 +126,6 @@ ggplot(maincas_ong,
        facet_wrap(~ ptype, nrow = 2) +
        theme_clean()
 
-fit_all_dur <- maincas_ong[, glm(durat_wks ~ 1, family = "quasipoisson")]
-
 fit_main_dur <- maincas_ong[ptype == 1,
                             glm(durat_wks ~ 1, family = "quasipoisson")]
 
@@ -134,23 +133,16 @@ fit_casl_dur <- maincas_ong[ptype == 2,
                             glm(durat_wks ~ 1, family = "quasipoisson")]
 
 durats <- rbind(
-  add_ci(fit_all_dur, tb = data.frame(1)),
   add_ci(fit_main_dur, tb = data.frame(1)),
   add_ci(fit_casl_dur, tb = data.frame(1))
 )
 
 durats$X1 <- NULL
-durats$ptype <- c("overall", "main", "casual")
+durats$ptype <- c("main", "casual")
 
 setDT(durats)
 
 print(durats)
-
-
-# %% ONE-TIME PARTNERSHIPS -----------------------------------------------------
-
-# onetime partnerships
-ponetime <- anl[ptype == 3, .N, .(id, psubtype, ptype)]
 
 
 # %% IMPUTE AGE --------------------------------------------------------------
@@ -486,8 +478,6 @@ mp_age5match <- mp[!is.na(p_age5)] %>%
   .[, .(N = sum(N)), sameage] %>%
   .[, P := round(N / sum(N), 4)]
 
-mp_age5match
-
 print(mp_age5match)
 
 cp_age5match <- cp[!is.na(p_age5)] %>%
@@ -571,6 +561,7 @@ print(cp_analrole)
 
 # %% PARTNERSHIP REUSABLES -----------------------------------------------------
 
+# store unique levels for categorical variables
 race_unq <- data.table(race.cat = sort(unique(deg_data$race.cat)))
 age5_unq <- data.table(age5 = sort(unique(deg_data$age5)))
 
@@ -580,13 +571,36 @@ main_degt2_unq <- data.table(
 
 casual_deg_unq <- data.table(degcasl = sort(unique(deg_data$degcasl)))
 
+# labels for ciTools::add_ci output
 cilabs <- c("ll95", "ul95")
+
+# set up tables for predictor level combinations
+ra_grid <- expand.grid(
+  race.cat = unlist(race_unq),
+  age5 = unlist(age5_unq)
+)
+
+rac_grid <- expand.grid(
+  race.cat = unlist(race_unq),
+  age5 = unlist(age5_unq),
+  degcasl = unlist(casual_deg_unq)
+)
+
+ram_grid <- expand.grid(
+  race.cat = unlist(race_unq),
+  age5 = unlist(age5_unq),
+  degmain_trunc2 = unlist(main_degt2_unq)
+)
+
+racm_grid <- expand.grid(
+  race.cat = unlist(race_unq),
+  age5 = unlist(age5_unq),
+  degcasl = unlist(casual_deg_unq),
+  degmain_trunc2 = unlist(main_degt2_unq)
+)
 
 
 # %% MAIN PARTNERSHIPS ---------------------------------------------------------
-
-ra_grid <- expand.grid(race.cat = unlist(race_unq),
-                       age5 = unlist(age5_unq))
 
 ## ... PROBS FOR SEEDING MAIN DEGREE
 
@@ -617,53 +631,46 @@ mainprob_by_ra <- lapply(main_bin, function(x) {
 })
 
 
-## ... EXPECTED MAIN DEGREE (BY RACE AND AGE)
+## ... EXPECTED MAIN DEGREE (BY RACE, AGE, AND CASUAL DEGREE)
 
-# fit total degree as a function of race and age
-fit_mdeg_total <- glm(
-  degmain_trunc2 ~ race.cat + factor(age5),
+fit_mdeg_joint <- glm(
+  degmain_trunc2 ~ race.cat + factor(age5) + factor(degcasl),
   data = deg_data,
   family = "quasipoisson"
 )
 
-summary(fit_mdeg_total)
+summary(fit_mdeg_joint)
 
-# predict race-and-age-specific main degree
-pred_mdeg_byra <- predict(
-  fit_mdeg_total,
-  newdata = ra_grid,
+pred_mdeg_joint <- predict(
+  fit_mdeg_joint,
+  newdata = rac_grid,
   type = "response"
 )
 
-pred_mdeg_byra <- cbind(ra_grid, pred_mdeg_byra)
-
-
-# fit main degree as a function of casual degree
-fit_mdeg_bycasl <- glm(
-  degmain_trunc2 ~ factor(degcasl),
-  data = deg_data,
-  family = "quasipoisson"
-)
-
-summary(fit_mdeg_bycasl)
-
-## .. EXPECTED MAIN DEGRE (BY CASUAL DEGREE)
-
-# predict casual-degree-specific main degree
-pred_mdeg_bycasl <- predict(
-  fit_mdeg_bycasl,
-  newdata = casual_deg_unq,
-  type = "response"
-)
-
-pred_mdeg_bycasl <- cbind(casual_deg_unq, pred_mdeg_bycasl)
-print(pred_mdeg_bycasl)
+pred_mdeg_joint <- cbind(rac_grid, pred_mdeg_joint)
+print(pred_mdeg_joint)
 
 # ... MAIN CONCURRENCY
 
 # proportion of individuals with concurrent main partnerships
-main_concurrent_prob <- deg_data[, mean(main_conc_ind)]
-round(main_concurrent_prob, 3)
+# main_concurrent_prob <- deg_data[, mean(main_conc_ind)]
+# round(main_concurrent_prob, 3)
+
+head(deg_data[, .(id, race.cat, age5, degmain, degcasl, main_conc_ind)])
+
+fit_main_concurrent <- glm(
+  main_conc_ind ~ race.cat + factor(age5) + factor(degcasl),
+  family = "binomial",
+  data = deg_data
+)
+
+pred_main_concurrent <- predict(
+  fit_main_concurrent,
+  newdata = rac_grid,
+  type = "response"
+)
+
+pred_main_concurrent <- cbind(rac_grid, pred_main_concurrent)
 
 # ... MAIN RELATIONSHIP DURATION
 
@@ -702,56 +709,116 @@ caslprob_by_ra <- lapply(casl_bin, function(x) {
 
 print(caslprob_by_ra)
 
-# ... EXPECTED CASUAL DEGREE (BY RACE AND AGE)
 
-# fit total degree as a function of race and age
-fit_cdeg_total <- glm(
-  degcasl ~ race.cat + factor(age5),
-  data = deg_data,
-  family = "quasipoisson")
+## ... EXPECTED MAIN DEGREE (BY RACE, AGE, AND MAIN DEGREE)
 
-summary(fit_cdeg_total)
-
-# predict race-and-age-specific casual degree
-pred_cdeg_byra <- predict(
-  fit_cdeg_total,
-  newdata = ra_grid,
-  type = "response"
-)
-
-pred_cdeg_byra <- cbind(ra_grid, pred_cdeg_byra)
-print(pred_cdeg_byra)
-
-# ... EXPECTED CASUAL DEGREE (BY MAIN DEGREE)
-
-fit_cdeg_bymain <- glm(
-  degcasl ~ factor(degmain_trunc2),
+fit_cdeg_joint <- glm(
+  degcasl ~ race.cat + factor(age5) + factor(degmain_trunc2),
   data = deg_data,
   family = "quasipoisson"
 )
 
-summary(fit_cdeg_bymain)
+summary(fit_cdeg_joint)
 
-pred_cdeg_bymain <- predict(
-  fit_cdeg_bymain,
-  newdata = main_degt2_unq,
+pred_cdeg_joint <- predict(
+  fit_cdeg_joint,
+  newdata = ram_grid,
   type = "response"
 )
 
-pred_cdeg_bymain <- cbind(main_degt2_unq, pred_cdeg_bymain)
-print(pred_cdeg_bymain)
+pred_cdeg_joint <- cbind(ram_grid, pred_cdeg_joint)
+print(pred_cdeg_joint)
+
 
 # ... CASUAL CONCURRENCY
 
 # proportion of individuals with concurrent casual partnerships
-casl_concurrent_prob <- deg_data[, mean(casl_conc_ind)]
-round(casl_concurrent_prob, 3)
+# casl_concurrent_prob <- deg_data[, mean(casl_conc_ind)]
+# round(casl_concurrent_prob, 3)
+
+fit_casl_concurrent <- glm(
+  casl_conc_ind ~ race.cat + factor(age5) + factor(degmain_trunc2),
+  family = "binomial",
+  data = deg_data
+)
+
+pred_casl_concurrent <- predict(
+  fit_casl_concurrent,
+  newdata = ram_grid,
+  type = "response"
+)
+
+pred_casl_concurrent <- cbind(ram_grid, pred_casl_concurrent)
+print(pred_casl_concurrent)
 
 # ... CASUAL RELATIONSHIP DURATION
 
 # average duration (in weeks)
 casl_durat_wks <- durats[ptype == "casual", pred]
 print(casl_durat_wks)
+
+
+# %% ONE-TIME PARTNERSHIPS -----------------------------------------------------
+
+ponetime <- anl[
+  ptype == 3,
+  .(id, pid,
+    ego.age, ego.race.cat,
+    p_age_imputed, p_race.cat,
+    p_rai_once, p_iai_once, p_roi_once, p_ioi_once,
+    ptype, psubtype)
+    ]
+
+print(ponetime)
+ponetime[, .N, psubtype]
+
+ponetime <- anl[ptype == 3, .N, .(id, psubtype, ptype)]
+
+pinst_rate <- an[order(id), .(id, race.cat, age, pnoa_12m, pna_12m, pno_12m)]
+
+# 19 missing
+mice::md.pattern(pinst_rate)
+
+pinst_rate[, inst_wkrate := pnoa_12m / 52]
+
+pinst_rate <- pinst_rate[!is.na(inst_wkrate)]
+
+pinst_rate[, plot(density(pnoa_12m))]
+pinst_rate[, .(mean = mean(pnoa_12m), var = var(pnoa_12m))]
+
+pinst_rate[, plot(density(inst_wkrate))]
+pinst_rate[, .(mean = mean(inst_wkrate), var = var(inst_wkrate))]
+
+# join deg_data and pinst_rate
+pinst_rate <- deg_data[
+  pinst_rate,
+  .(id, age, age5, race.cat,
+    degmain_trunc2, degcasl,
+    inst_wkrate)
+    ]
+
+print(pinst_rate)
+
+
+## ... EXPECTED WEEKLY PARTNERSHIP RATE (BY RACE, AGE, MAIN, AND CASUAL DEGREE)
+
+fit_inst_joint <- glm(
+  inst_wkrate ~
+    race.cat + factor(age5) + factor(degcasl) + factor(degmain_trunc2),
+  data = pinst_rate,
+  family = "quasipoisson"
+)
+
+summary(fit_inst_joint)
+
+pred_inst_joint <- predict(
+  fit_inst_joint,
+  newdata = racm_grid,
+  type = "response"
+)
+
+pred_inst_joint <- cbind(racm_grid, pred_inst_joint)
+print(pred_inst_joint)
 
 
 # %% WRITE SUMMARIES -----------------------------------------------------------
@@ -772,16 +839,15 @@ saveRDS(list(main_artnet_sum = main_summaries,
         file = "netstats/aggregate_degree_summaries.Rds")
 
 # Main predictions
-
 main_pred_probs <- mainprob_by_ra %>% rbindlist
-main_pred_degbyra <- as.data.table(pred_mdeg_byra)
-main_pred_degbycasl <- as.data.table(pred_mdeg_bycasl)
+main_pred_joint <- as.data.table(pred_mdeg_joint)
 
 # Casual predictions
-
 casl_pred_probs <- caslprob_by_ra %>% rbindlist
-casl_pred_degbyra <- as.data.table(pred_cdeg_byra)
-casl_pred_degbymain <- as.data.table(pred_cdeg_bymain)
+casl_pred_joint <- as.data.table(pred_cdeg_joint)
+
+# Instantaneous predictions
+inst_pred_joint <- as.data.table(pred_inst_joint)
 
 
 nparams <- list(
@@ -789,9 +855,8 @@ nparams <- list(
   demo = list(ai.role.pr = mc_analrole),
 
   main = list(degprob = main_pred_probs,
-              degpred_byra = main_pred_degbyra,
-              degpred_bycasl = main_pred_degbycasl,
-              concurrent = main_concurrent_prob,
+              degpred_joint = main_pred_joint,
+              concurrent = as.data.table(pred_main_concurrent),
               racematch = mp_racematch,
               age5match = mp_age5match,
               durat_wks = main_durat_wks,
@@ -799,14 +864,15 @@ nparams <- list(
             ),
 
   casl = list(degprob = casl_pred_probs,
-              degpred_byra = casl_pred_degbyra,
-              degpred_bymain = casl_pred_degbymain,
-              concurrent = casl_concurrent_prob,
+              degpred_joint = casl_pred_joint,
+              concurrent = as.data.table(pred_casl_concurrent),
               racematch = cp_racematch,
               age5match = cp_age5match,
               durat_wks = casl_durat_wks,
               role.class = cp_analrole
-            )
+            ),
+
+  inst = list(inst_joint = inst_pred_joint)
 )
 
 print(nparams)
