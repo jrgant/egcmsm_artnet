@@ -334,31 +334,6 @@ deg_data %>%
 print(deg_data)
 
 
-# # if initial casual estimate missing, assign casual_init degree as 0
-# deg_data[is.na(casl_init), casl_init := 0]
-#
-# # use self-reported ongoing partnerships to calculate ongoing causal,
-# # assuming any non-main, ongoing partnership is casual
-# deg_data[!is.na(pn_ongoing),
-#          casl_upper :=
-#           (casl_init > (pn_ongoing - main)) * casl_init +
-#           (casl_init < (pn_ongoing - main)) * (pn_ongoing - main)]
-#
-# deg_data[is.na(pn_ongoing), casl_upper := casl_init]
-#
-# deg_data[, tot_pships_init := main + casl_init]
-# deg_data[, tot_pships_upper := main + casl_upper]
-#
-# print(deg_data)
-#
-# # One-time partnerships
-# onetime_data <- merge(ponetime[, .(id, onetime = N)],
-#                       an[, .(id, race.cat, age5)],
-#                       by = "id")
-#
-# dfSummary(onetime_data, graph.col = F)
-
-
 # %% INSPECT DEGREE/ONETIME DATASETS -------------------------------------------
 
 # oa = oral and anal sex partnership
