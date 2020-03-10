@@ -87,7 +87,7 @@ mcmc.diagnostics(netest_main$fit)
 dx_main <- netdx(
   netest_main,
   nsims = 10,
-  nsteps = 500,
+  nsteps = 2000,
   ncores = use_ncores,
   skip.dissolution = FALSE,
   nwstats.formula = main_formation_full
@@ -163,7 +163,7 @@ mcmc.diagnostics(netest_casl$fit)
 dx_casl <- netdx(
   netest_casl,
   nsims = 10,
-  nsteps = 500,
+  nsteps = 2000,
   ncores = use_ncores,
   skip.dissolution = FALSE,
   nwstats.formula = casl_formation_full
