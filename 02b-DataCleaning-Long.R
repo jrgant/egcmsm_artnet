@@ -15,7 +15,6 @@ unql <- function(data) length(unique(data))
 # import cleaned wide dataset
 an <- fread(paste0(Sys.getenv("ARTNET_PATH"), "/artnet-wide-cleaned.csv"))
 
-
 # %% INDIVIDUAL PARTNER DATA ---------------------------------------------------
 
 # Set up ID table - one row per partnership
@@ -66,10 +65,11 @@ print(colsets)
 #  - A result of converting a subset of variables to integer format.
 #  - Some were saved as character with missing values recorded as "".
 
-sapply(slugs[grepl("recai|recuai|insai|insuai|once|acts", slugs)], print)
+sapply(slugs[grepl("recai|recuai|insai|insuai|once|acts|unit", slugs)], print)
 
-integer_coerce <- slugs[grepl("recai|recuai|insai|insuai|recoi|insoi|once|acts",
-                              slugs)]
+integer_coerce <-
+  slugs[grepl("recai|recuai|insai|insuai|recoi|insoi|once|acts|unit",
+        slugs)]
 
 melted_vars <- lapply(setNames(slugs, slugs), function(x) {
 
@@ -209,6 +209,7 @@ str(anl)
 anl[, length(unique(id))]
 
 table(anl$ptype)
+table(is.na(anl$sub_date))
 
 print(anl[, .(id,
               pid,
@@ -398,7 +399,7 @@ anl[, .(id,
 
 anl[, .N, .(id)][, summary(N)]
 
-dfSummary(anl, plain.ascii = T, graph.col = F)
+# dfSummary(anl, plain.ascii = T, graph.col = F)
 
 
 # %% IMPUTE RACE/ETHNICITY -----------------------------------------------------
@@ -487,6 +488,119 @@ anl[, .(abs_agediff, abs_sqrt_agediff)]
 anl[!is.na(nn), sum(is.na(p_age_imputed)) / unql(paste0(id, pid))]
 
 print(names(anl))
+
+
+# %% CALCULATE PARTNERSHIP DURATIONS -------------------------------------------
+
+# convert subdate to date
+anl[, sub_date := ymd(sub_date)]
+str(anl)
+
+
+set.seed(283798)
+
+# impute start month
+anl[ptype %in% 1:2 & p_ongoing_ind == 1 & is.na(p_startmm),
+    p_startmm := sample(1:12, size = 1),
+    by = .(id, pid)]
+
+anl[ptype %in% 1:2 & p_ongoing_ind == 1, p_startdt := ymd(
+  paste(
+    p_startyyyy, p_startmm,
+    # sample day of the month (all rows)
+    ((p_startmm %in% c(1, 3, 5, 7, 8, 10, 12)) * sample(1:31, size = 1)) +
+      ((p_startmm %in% c(4, 6, 9, 11)) * sample(1:30, size = 1)) +
+      ((p_startmm == 2) * sample(1:28, size = 1)),
+    sep = "-")),
+  by = .(id, pid)]
+
+anl[ptype %in% 1:2 & p_ongoing_ind == 1 & is.na(p_startdt)] %>% print
+anl[ptype %in% 1:2 & p_ongoing_ind == 1 & !is.na(p_startdt)] %>% print
+
+datecols <- c(
+  "ptype",
+  "p_startyyyy", "p_startyyyydk",
+  "p_startmm", "p_startdt"
+)
+
+# if provided year range of partnership start date, impute
+# set upper limit to 15
+startdt_match <- list(ydk1 = 1:364,
+                      ydk2 = 365 : (2 * 365 - 1),
+                      ydk3 = (2 * 365) : (5 * 365 - 1),
+                      ydk4 = (5 * 365) : (10 * 365 - 1),
+                      ydk5 = (10 * 365) : (15 * 364 - 1))
+
+sapply(startdt_match, range)
+
+anl[!is.na(p_startyyyydk),
+  p_startdt := sub_date - sample(startdt_match[[p_startyyyydk]], size = 1),
+  by = .(id, pid)]
+
+anl[ptype %in% 1:2 & p_ongoing_ind == 1 & !is.na(p_startdt), .(sub_date, p_startdt)]
+
+# @TODO 2020-01-28: fix this issue more naturally
+# set abs to account for imputed dates that were after the sub date
+anl[, durat_days := abs(as.numeric(sub_date - p_startdt))]
+anl[, durat_wks := round(durat_days / 7)]
+class(anl$durat_days)
+class(anl$durat_wks)
+
+anl[ptype %in% 1:2, .(
+  id, pid,
+  ptype, ego.race.cat, ego.age5,
+  p_startyyyy, p_startmm, p_startdt, sub_date,
+  durat_days, durat_wks
+)]
+
+
+# %% REFORMAT HAVEN-LABELED UNIT VARIABLES -------------------------------------
+
+## reformat sex act rate unit to calculate weekly rates in EpiStats.R
+
+# receptive anal sex units
+anl[, p_unitrai := dplyr::case_when(
+  p_unitrai %in% c(11647, 11685, 11688, 11691, 11694) ~ 4,  # monthly
+  p_unitrai %in% c(11648, 11686, 11689, 11692, 11695) ~ 52, # yearly
+  p_unitrai %in% c(11646, 11684, 11687, 11690, 11693) ~ 1,  # weekly
+  p_unitrai %in% c(13061, 13062, 13063, 13064, 13065) ~ durat_wks,
+  TRUE ~ NA_real_
+  )]
+
+anl[ptype %in% 1:2, .N, keyby = p_unitrai]
+
+# insertive anal sex units
+anl[, p_unitiai := dplyr::case_when(
+  p_unitiai %in% c(11655, 11700, 11703, 11706, 11801) ~ 4,  # monthly
+  p_unitiai %in% c(11656, 11701, 11704, 11707, 11802) ~ 52, # yearly
+  p_unitiai %in% c(11654, 11699, 11702, 11705, 11800) ~ 1,  # weekly
+  p_unitiai %in% c(13066, 13069, 13072, 13074, 13077) ~ durat_wks, # overall
+  TRUE ~ NA_real_
+  )]
+
+anl[ptype %in% 1:2, .N, keyby = p_unitiai]
+
+# receptive oral sex units
+anl[, p_unitroi := dplyr::case_when(
+  p_unitroi %in% c(11658, 11709, 11712, 11715, 11718) ~ 4,  # monthly
+  p_unitroi %in% c(11659, 11710, 11713, 11716, 11719) ~ 52, # yearly
+  p_unitroi %in% c(11657, 11708, 11711, 11714, 11717) ~ 1,  # weekly
+  p_unitroi %in% c(13067, 13070, 13073, 13075, 13078) ~ durat_wks, # overall
+  TRUE ~ NA_real_
+  )]
+
+anl[ptype %in% 1:2, .N, keyby = p_unitroi]
+
+# insertive oral sex units
+anl[, p_unitioi := dplyr::case_when(
+  p_unitioi %in% c(11661, 11733, 11736, 11739, 11742) ~ 4,  # monthly
+  p_unitioi %in% c(11662, 11734, 11737, 11740, 11743) ~ 52, # yearly
+  p_unitioi %in% c(11660, 11732, 11735, 11738, 11741) ~ 1,  # weekly
+  p_unitroi %in% c(13068, 13071, 13076, 13079, 13080) ~ durat_wks, # overall
+  TRUE ~ NA_real_
+  )]
+
+anl[ptype %in% 1:2, .N, keyby = p_unitioi]
 
 
 # %% WRITE LONG DATASET --------------------------------------------------------

@@ -38,7 +38,8 @@ cat(
 # ongoing main or casual partnerships
 ong_cols <- c("sub_date", "id", "pid",
               "ptype", "psubtype",
-              "p_startyyyy", "p_startyyyydk", "p_startmm",
+              "p_startyyyy", "p_startyyyydk", "p_startmm", "p_startdt",
+              "durat_days", "durat_wks",
               "ego.race.cat", "ego.age5",
               "ego.anal.role")
 
@@ -47,8 +48,8 @@ setkeyv(maincas_ong, cols = c("id", "pid"))
 
 maincas_ong[, table(ptype, psubtype, exclude = NULL)]
 
-# convert subdate to date
-maincas_ong[, sub_date := ymd(sub_date)]
+# convert startdt to date
+maincas_ong[, p_startdt := ymd(p_startdt)]
 str(maincas_ong)
 
 # ongoing main and casual partnerships
@@ -68,55 +69,11 @@ print(ong_ptype_cts)
 
 # %% PARTNERSHIP DURATIONS -----------------------------------------------------
 
-# impute start month
-maincas_ong[is.na(p_startmm),
-            p_startmm := sample(1:12, size = 1),
-            by = .(id, pid)]
-
-set.seed(283798)
-
-maincas_ong[,
-  p_startdt := ymd(
-    paste(
-      p_startyyyy, p_startmm,
-      # sample day of the month (all rows)
-      ((p_startmm %in% c(1, 3, 5, 7, 8, 10, 12)) * sample(1:31, size = 1)) +
-        ((p_startmm %in% c(4, 6, 9, 11)) * sample(1:30, size = 1)) +
-        ((p_startmm == 2) * sample(1:28, size = 1)),
-      sep = "-")),
-  by = .(id, pid)]
-
-maincas_ong[is.na(p_startdt)] %>% print
-maincas_ong[!is.na(p_startdt)] %>% print
-
-datecols <- c("ptype", "p_startyyyy", "p_startyyyydk", "p_startmm", "p_startdt")
-
-# if provided year range of partnership start date, impute
-# set upper limit to 15
-startdt_match <- list(ydk1 = 1:364,
-                      ydk2 = 365 : (2 * 365 - 1),
-                      ydk3 = (2 * 365) : (5 * 365 - 1),
-                      ydk4 = (5 * 365) : (10 * 365 - 1),
-                      ydk5 = (10 * 365) : (15 * 364 - 1))
-
-sapply(startdt_match, range)
-
-maincas_ong[!is.na(p_startyyyydk),
-            p_startdt := sub_date - sample(startdt_match[[p_startyyyydk]],
-                                           size = 1),
-            by = .(id, pid)]
-
-maincas_ong[is.na(p_startdt)]
-
-# @TODO 2020-01-28: fix this issue more naturally
-# set abs to account for imputed dates that were after the sub date
-maincas_ong[, durat_days := abs(as.numeric(sub_date - p_startdt))]
-maincas_ong[, durat_wks := round(durat_days / 7)]
-class(maincas_ong$durat_days)
-class(maincas_ong$durat_wks)
-
-maincas_ong[, .(id, pid, ego.race.cat, ego.age5, p_startyyyy, p_startmm,
-                p_startdt, sub_date, durat_days, durat_wks)]
+maincas_ong[, .(
+  id, pid, ego.race.cat, ego.age5,
+  ptype, p_startyyyy, p_startmm, p_startdt, sub_date,
+  durat_days, durat_wks
+)]
 
 maincas_ong[, table(durat_wks < 0)]
 
