@@ -558,8 +558,8 @@ anl[ptype %in% 1:2, .(
 
 ## reformat sex act rate unit to calculate weekly rates in EpiStats.R
 
-# receptive anal sex units
-anl[, p_unitrai := dplyr::case_when(
+# receptive anal sex time units
+anl[, p_unitrai_fix := dplyr::case_when(
   p_unitrai %in% c(11647, 11685, 11688, 11691, 11694) ~ 4,  # monthly
   p_unitrai %in% c(11648, 11686, 11689, 11692, 11695) ~ 52, # yearly
   p_unitrai %in% c(11646, 11684, 11687, 11690, 11693) ~ 1,  # weekly
@@ -567,10 +567,8 @@ anl[, p_unitrai := dplyr::case_when(
   TRUE ~ NA_real_
   )]
 
-anl[ptype %in% 1:2, .N, keyby = p_unitrai]
-
-# insertive anal sex units
-anl[, p_unitiai := dplyr::case_when(
+# insertive anal sex time units
+anl[, p_unitiai_fix := dplyr::case_when(
   p_unitiai %in% c(11655, 11700, 11703, 11706, 11801) ~ 4,  # monthly
   p_unitiai %in% c(11656, 11701, 11704, 11707, 11802) ~ 52, # yearly
   p_unitiai %in% c(11654, 11699, 11702, 11705, 11800) ~ 1,  # weekly
@@ -578,10 +576,8 @@ anl[, p_unitiai := dplyr::case_when(
   TRUE ~ NA_real_
   )]
 
-anl[ptype %in% 1:2, .N, keyby = p_unitiai]
-
-# receptive oral sex units
-anl[, p_unitroi := dplyr::case_when(
+# receptive oral sex time units
+anl[, p_unitroi_fix := dplyr::case_when(
   p_unitroi %in% c(11658, 11709, 11712, 11715, 11718) ~ 4,  # monthly
   p_unitroi %in% c(11659, 11710, 11713, 11716, 11719) ~ 52, # yearly
   p_unitroi %in% c(11657, 11708, 11711, 11714, 11717) ~ 1,  # weekly
@@ -589,10 +585,8 @@ anl[, p_unitroi := dplyr::case_when(
   TRUE ~ NA_real_
   )]
 
-anl[ptype %in% 1:2, .N, keyby = p_unitroi]
-
-# insertive oral sex units
-anl[, p_unitioi := dplyr::case_when(
+# insertive oral sex time units
+anl[, p_unitioi_fix := dplyr::case_when(
   p_unitioi %in% c(11661, 11733, 11736, 11739, 11742) ~ 4,  # monthly
   p_unitioi %in% c(11662, 11734, 11737, 11740, 11743) ~ 52, # yearly
   p_unitioi %in% c(11660, 11732, 11735, 11738, 11741) ~ 1,  # weekly
@@ -600,8 +594,22 @@ anl[, p_unitioi := dplyr::case_when(
   TRUE ~ NA_real_
   )]
 
-anl[ptype %in% 1:2, .N, keyby = p_unitioi]
+anl[ptype %in% 1:2, .N, keyby = p_unitrai_fix]
+anl[ptype %in% 1:2, .N, keyby = p_unitiai_fix]
+anl[ptype %in% 1:2, .N, keyby = p_unitroi_fix]
+anl[ptype %in% 1:2, .N, keyby = p_unitioi_fix]
 
+# set units that equal 0 to 0.5 to avoid infinite values in rate calculations
+
+anl[ptype %in% 1:2 & p_rai == 1 & p_unitrai_fix == 0, p_unitrai_fix := 0.5]
+anl[ptype %in% 1:2 & p_iai == 1 & p_unitiai_fix == 0, p_unitiai_fix := 0.5]
+anl[ptype %in% 1:2 & p_roi == 1 & p_unitroi_fix == 0, p_unitroi_fix := 0.5]
+# p_unitioi_fix had no 0 time units
+
+anl[ptype %in% 1:2 & p_rai == 1, summary(p_unitrai_fix)]
+anl[ptype %in% 1:2 & p_iai == 1, summary(p_unitiai_fix)]
+anl[ptype %in% 1:2 & p_roi == 1, summary(p_unitroi_fix)]
+anl[ptype %in% 1:2 & p_ioi == 1, summary(p_unitioi_fix)]
 
 # %% WRITE LONG DATASET --------------------------------------------------------
 
