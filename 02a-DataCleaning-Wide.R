@@ -198,7 +198,10 @@ ep[stitest_2yr_prep == 2000, .(id, age, race.cat,
 avs$stitest_2yr_prep[avs$stitest_2yr_prep == 2000] <- NA
 avs[prep_revised == 1, .N, keyby = stitest_2yr_prep]
 
-# create categorical verstion of stitest_2yr_prep
+# calculate weekly STI testing rate
+avs[, stitest_perweek_prep := stitest_2yr_prep / (52 * 2)]
+
+# create categorical version of stitest_2yr_prep
 avs[, stitest_2yr_pcat := ifelse(stitest_2yr_prep >= 7, "7+", stitest_2yr_prep)]
 avs[prep_revised == 1, .N, keyby = stitest_2yr_pcat]
 
@@ -220,6 +223,9 @@ avs[stitest_2yr == 2015, .(id, age, race.cat,
 # set extreme value to missing (rationale: impossible value)
 avs$stitest_2yr[avs$stitest_2yr == 2015] <- NA
 avs[prep_revised != 1, .N, keyby = stitest_2yr]
+
+# calculate weekly STI testing rate
+avs[, stitest_perweek := stitest_2yr / (52 * 2)]
 
 # create categorical version of stitest_2yr
 avs[, stitest_2yr_cat := ifelse(stitest_2yr >= 7, "7+", stitest_2yr)]
@@ -299,6 +305,7 @@ freq(avs$m_mp12instanum2) %>% print
 
 avs[, pno_12m := pnoa_12m - pna_12m]
 freq(avs$pno_12m) %>% print
+
 
 # %% Write Cleaned Dataset ---------------------------------------------------
 
