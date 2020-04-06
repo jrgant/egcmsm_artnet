@@ -1,9 +1,11 @@
 # %% PACKAGES ------------------------------------------------------------------
 
-pacman::p_load(magrittr,
-               data.table,
-               summarytools,
-               stringr)
+pacman::p_load(
+  magrittr,
+  data.table,
+  summarytools,
+  stringr
+)
 
 netstats <- readRDS(here::here("netstats", "netstats.Rds"))
 
@@ -100,9 +102,6 @@ plot(dx_main, qnts = 0.95)
 plot(dx_main, type = "duration")
 print(dx_main)
 
-saveRDS(netest_main, "netest/netest_main.Rds")
-saveRDS(dx_main, "netest/dx_main.Rds")
-
 
 # %% CASUAL PARTNERSHIPS -------------------------------------------------------
 
@@ -172,9 +171,6 @@ dx_casl <- netdx(
 plot(dx_casl, qnts = 0.95)
 print(dx_casl)
 
-saveRDS(netest_casl, "netest/netest_casl.Rds")
-saveRDS(dx_casl, "netest/dx_casl.Rds")
-
 
 # %% ONE-TIME PARTNERSHIPS -----------------------------------------------------
 
@@ -236,5 +232,16 @@ dx_inst <- netdx(
 plot(dx_inst, qnts = 0.95)
 print(dx_inst)
 
-saveRDS(netest_inst, "netest/netest_inst.Rds")
-saveRDS(dx_inst, "netest/dx_inst.Rds")
+
+# %% Write ------------------------------------------------------------------
+
+netest_out <- list(
+  fit_main = netest_main,
+  fit_casl = netest_casl,
+  fit_inst = netest_inst
+)
+
+dx_out <- list(dx_main, dx_casl, dx_inst)
+
+saveRDS(netest_out, "netest/netest.Rds")
+saveRDS(dx_out, "netest/dx_inst.Rds")
