@@ -244,4 +244,4 @@ netest_out <- list(
 dx_out <- list(dx_main, dx_casl, dx_inst)
 
 saveRDS(netest_out, "netest/netest.Rds")
-saveRDS(dx_out, "netest/dx_inst.Rds")
+saveRDS(dx_out, "netest/netdx.Rds")
