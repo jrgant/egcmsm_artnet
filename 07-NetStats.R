@@ -284,6 +284,12 @@ attr_role.class <- sample(role.class.dist[, role.class.lvls],
                           prob = role.class.dist[, role.class.prob],
                           replace = T)
 
+# reformat for use in netsim
+attr_role.class[attr_role.class == "I"] <- 0
+attr_role.class[attr_role.class == "R"] <- 1
+attr_role.class[attr_role.class == "V"] <- 2
+
+prop.table(table(attr_role.class))
 
 # %% PARTNERSHIP REUSABLES -----------------------------------------------------
 
@@ -564,6 +570,9 @@ for (i in 1:length(race.lvls)) {
 for (i in 1:length(age5.lvls)) {
   out$demog[paste0("num.age5_", i)] <- age5.dist[i, age5.num]
 }
+
+# Age limits
+out$demog$ages <- c(15, 65)
 
 # Mortality Rates (Weekly, Age-and-Race-specific)
 for (i in 1:(length(mort_rates_annual_raspec) - 1)) {
