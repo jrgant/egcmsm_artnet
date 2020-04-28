@@ -2,12 +2,15 @@
 
 source("01-Import-Private-Data.R")
 
-pacman::p_load(data.table,
-               summarytools,
-               ciTools,
-               dplyr,
-               stringr,
-               lubridate)
+pacman::p_load(
+  data.table,
+  summarytools,
+  ciTools,
+  dplyr,
+  stringr,
+  lubridate,
+  forcats
+)
 
 # function to calculate number of unique levels in a variable
 unql <- function(data) length(unique(data))
@@ -397,6 +400,8 @@ anl[, p_race.cat := ifelse(
         "hispanic"
         )]
 
+anl[, .N, .(p_race, p_hisp, p_race.cat)]
+
 anl[, .(id,
         pid,
         nn,
@@ -405,8 +410,6 @@ anl[, .(id,
         p_race.cat)]
 
 anl[, .N, .(id)][, summary(N)]
-
-# dfSummary(anl, plain.ascii = T, graph.col = F)
 
 
 # %% IMPUTE PARTNER AGE --------------------------------------------------------
@@ -431,6 +434,7 @@ anl[, .(id, p_age)][]
 total_propmissing_page <- anl[, sum(is.na(p_age)) / .N]
 total_propmissing_page
 
+# 7.0% missing
 anl[is.na(p_age) & !is.na(p_relage), sum(.N)] / nrow(anl)
 anl[, .N, key = p_relage]
 
