@@ -158,7 +158,7 @@ predict_pnum <- function(yvec = outcomes, model_list, pf) {
 
 pred_ongoing <- predict_pnum(
   yvec = "pn_ongoing",
-  model_list = list(deg_ests$pn_ongoing$age_categorical$fits$nbin_fit),
+  model_list = list(deg_ests$pn_ongoing$fits$nbin_fit),
   pf = quo(hiv.ego)
  )
 
