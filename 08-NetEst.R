@@ -30,6 +30,13 @@ nw <- set.vertex.attribute(nw, "deg.main", netstats$attr$deg.main)
 nw <- set.vertex.attribute(nw, "deg.casl", netstats$attr$deg.casl)
 nw <- set.vertex.attribute(nw, "role.class", netstats$attr$role.class)
 
+# %% NOTE ------------------------------------------------------------------
+
+# Role class coding in model formulas:
+#   The levels argument in nodematch("role.class") indicates
+#   1 for insertive-only agents (coded as 0 in role.class) and
+#   2 for receptive-only agents (coded as 1 in role.class)
+
 
 # %% MAIN PARTNERSHIPS ---------------------------------------------------------
 
@@ -40,8 +47,8 @@ main_formation_full <-
   nodefactor("deg.casl", levels = NULL) +
   concurrent +
   nodematch("race.eth") +
-  nodematch("role.class", levels = c("R", "I"))
   nodematch("age.grp") +
+  nodematch("role.class", levels = c(1, 2))
 
 main_formation <-
   ~ edges +
@@ -50,8 +57,8 @@ main_formation <-
   nodefactor("deg.casl", levels = -1) +
   concurrent +
   nodematch("race.eth") +
-  nodematch("role.class", diff = TRUE, levels = c("R", "I"))
   nodematch("age.grp") +
+  nodematch("role.class", diff = TRUE, levels = c(1, 2))
 
 netstats_main <-
   with(netstats$netmain,
@@ -112,8 +119,8 @@ casl_formation_full <-
   nodefactor("deg.main", levels = NULL) +
   concurrent +
   nodematch("race.eth", levels = NULL) +
-  nodematch("role.class", levels = NULL)
   nodematch("age.grp") +
+  nodematch("role.class", levels = c(1, 2))
 
 casl_formation <-
   ~ edges +
@@ -122,8 +129,8 @@ casl_formation <-
   nodefactor("deg.main", levels = -1) +
   concurrent +
   nodematch("race.eth") +
-  nodematch("role.class", diff = TRUE, levels = c("R", "I"))
   nodematch("age.grp") +
+  nodematch("role.class", diff = TRUE, levels = c(1, 2))
 
 netstats_casl <-
   with(netstats$netcasl,
@@ -180,7 +187,7 @@ inst_formation_full <-
   nodefactor("age.grp", levels = NULL) +
   nodefactor("deg.main", levels = NULL) +
   nodefactor("deg.casl", levels = NULL) +
-  nodematch("role.class", levels = NULL)
+  nodematch("role.class", levels = c(1, 2))
 
 inst_formation <-
   ~ edges +
@@ -188,7 +195,7 @@ inst_formation <-
   nodefactor("age.grp", levels = -1) +
   nodefactor("deg.main", levels = -1) +
   nodefactor("deg.casl", levels = -1) +
-  nodematch("role.class", diff = TRUE, levels = c("R", "I"))
+  nodematch("role.class", diff = TRUE, levels = c(1, 2))
 
 netstats_inst <-
   with(netstats$netinst,

@@ -288,6 +288,7 @@ attr_role.class <- sample(role.class.dist[, role.class.lvls],
 attr_role.class[attr_role.class == "I"] <- 0
 attr_role.class[attr_role.class == "R"] <- 1
 attr_role.class[attr_role.class == "V"] <- 2
+attr_role.class <- as.numeric(attr_role.class)
 
 prop.table(table(attr_role.class))
 
