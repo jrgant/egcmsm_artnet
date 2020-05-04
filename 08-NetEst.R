@@ -236,7 +236,7 @@ dx_inst <- netdx(
   dynamic = FALSE
 )
 
-plot(dx_inst, qnts = 0.95)
+plot(dx_inst, sim.lines = TRUE, alpha = 0.4)
 print(dx_inst)
 
 
