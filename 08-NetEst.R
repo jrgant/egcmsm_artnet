@@ -25,7 +25,7 @@ nw <- network.initialize(netstats$demog$num, directed = F)
 nw <- set.vertex.attribute(nw, "race.eth", netstats$attr$race)
 nw <- set.vertex.attribute(nw, "age", netstats$attr$age)
 nw <- set.vertex.attribute(nw, "age.wk", netstats$attr$age.wk)
-nw <- set.vertex.attribute(nw, "age5", netstats$attr$age5)
+nw <- set.vertex.attribute(nw, "age.grp", netstats$attr$age.grp)
 nw <- set.vertex.attribute(nw, "deg.main", netstats$attr$deg.main)
 nw <- set.vertex.attribute(nw, "deg.casl", netstats$attr$deg.casl)
 nw <- set.vertex.attribute(nw, "role.class", netstats$attr$role.class)
@@ -36,32 +36,32 @@ nw <- set.vertex.attribute(nw, "role.class", netstats$attr$role.class)
 main_formation_full <-
   ~ edges +
   nodefactor("race.eth", levels = NULL) +
-  nodefactor("age5", levels = NULL) +
+  nodefactor("age.grp", levels = NULL) +
   nodefactor("deg.casl", levels = NULL) +
   concurrent +
   nodematch("race.eth") +
-  nodematch("age5") +
   nodematch("role.class", levels = c("R", "I"))
+  nodematch("age.grp") +
 
 main_formation <-
   ~ edges +
   nodefactor("race.eth", levels = -1) +
-  nodefactor("age5", levels = -1) +
+  nodefactor("age.grp", levels = -1) +
   nodefactor("deg.casl", levels = -1) +
   concurrent +
   nodematch("race.eth") +
-  nodematch("age5") +
   nodematch("role.class", diff = TRUE, levels = c("R", "I"))
+  nodematch("age.grp") +
 
 netstats_main <-
   with(netstats$netmain,
     c(edges = edges,
       nodefactor_race = nodefactor_race[-1],
-      nodefactor_age5 = nodefactor_age5[-1],
+      nodefactor_age.grp = nodefactor_age.grp[-1],
       nodefactor_degcasl = nodefactor_degcasl[-1],
       concurrent = concurrent,
       nodematch_race.eth = nodematch_race.eth,
-      nodematch_age5 = nodematch_age5,
+      nodematch_age.grp = nodematch_age.grp,
       nodematch_ai.role = c(0, 0)
 ))
 
@@ -108,32 +108,32 @@ print(dx_main)
 casl_formation_full <-
   ~ edges +
   nodefactor("race.eth", levels = NULL) +
-  nodefactor("age5", levels = NULL) +
+  nodefactor("age.grp", levels = NULL) +
   nodefactor("deg.main", levels = NULL) +
   concurrent +
   nodematch("race.eth", levels = NULL) +
-  nodematch("age5") +
   nodematch("role.class", levels = NULL)
+  nodematch("age.grp") +
 
 casl_formation <-
   ~ edges +
   nodefactor("race.eth", levels = -1) +
-  nodefactor("age5", levels = -1) +
+  nodefactor("age.grp", levels = -1) +
   nodefactor("deg.main", levels = -1) +
   concurrent +
   nodematch("race.eth") +
-  nodematch("age5") +
   nodematch("role.class", diff = TRUE, levels = c("R", "I"))
+  nodematch("age.grp") +
 
 netstats_casl <-
   with(netstats$netcasl,
     c(edges = edges,
       nodefactor_race = nodefactor_race[-1],
-      nodefactor_age5 = nodefactor_age5[-1],
+      nodefactor_age.grp = nodefactor_age.grp[-1],
       nodefactor_degmain = nodefactor_degmain[-1],
       concurrent = concurrent,
       nodematch_race.eth = nodematch_race.eth,
-      nodematch_age5 = nodematch_age5,
+      nodematch_age.grp = nodematch_age.grp,
       nodematch_ai.role = c(0, 0)
 ))
 
@@ -177,7 +177,7 @@ print(dx_casl)
 inst_formation_full <-
   ~ edges +
   nodefactor("race.eth", levels = NULL) +
-  nodefactor("age5", levels = NULL) +
+  nodefactor("age.grp", levels = NULL) +
   nodefactor("deg.main", levels = NULL) +
   nodefactor("deg.casl", levels = NULL) +
   nodematch("role.class", levels = NULL)
@@ -185,7 +185,7 @@ inst_formation_full <-
 inst_formation <-
   ~ edges +
   nodefactor("race.eth", levels = -1) +
-  nodefactor("age5", levels = -1) +
+  nodefactor("age.grp", levels = -1) +
   nodefactor("deg.main", levels = -1) +
   nodefactor("deg.casl", levels = -1) +
   nodematch("role.class", diff = TRUE, levels = c("R", "I"))
@@ -194,7 +194,7 @@ netstats_inst <-
   with(netstats$netinst,
     c(edges = edges,
       nodefactor_race = nodefactor_race[-1],
-      nodefactor_age5 = nodefactor_age5[-1],
+      nodefactor_age.grp = nodefactor_age.grp[-1],
       nodefactor_degmain = nodefactor_degmain[-1],
       nodefactor_degcasl = nodefactor_degcasl[-1],
       nodefactor_ai.role = c(0, 0)

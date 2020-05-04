@@ -40,7 +40,7 @@ ong_cols <- c("sub_date", "id", "pid",
               "ptype", "psubtype",
               "p_startyyyy", "p_startyyyydk", "p_startmm", "p_startdt",
               "durat_days", "durat_wks",
-              "ego.race.cat", "ego.age5",
+              "ego.race.cat", "ego.age.grp",
               "ego.anal.role")
 
 maincas_ong <- anl[ptype %in% 1:2 & p_ongoing_ind == 1, .N, ong_cols]
@@ -70,7 +70,7 @@ print(ong_ptype_cts)
 # %% PARTNERSHIP DURATIONS -----------------------------------------------------
 
 maincas_ong[, .(
-  id, pid, ego.race.cat, ego.age5,
+  id, pid, ego.race.cat, ego.age.grp,
   ptype, p_startyyyy, p_startmm, p_startdt, sub_date,
   durat_days, durat_wks
 )]
@@ -108,13 +108,13 @@ print(durats)
 
 # join ongoing partner counts with ego traits
 deg_data <- ong_ptype_cts[an[, .(id, pn_ongoing,
-                                 race.cat, age5)], on = "id"]
+                                 race.cat, age.grp)], on = "id"]
 
 setkey(deg_data, id)
 
 # should be 0
 sum(is.na(deg_data$race.cat))
-sum(is.na(deg_data$age5))
+sum(is.na(deg_data$age.grp))
 
 # if partnership type count missing, set to 0
 deg_data[, ":="(
@@ -211,7 +211,7 @@ pcols <- c("id",
            "ptype",
            "psubtype",
            "p_race.cat",
-           "p_age5",
+           "p_age.grp",
            "p_hiv",
            names(anl)[grep("^ego", names(anl))])
 
@@ -258,20 +258,20 @@ print(cp_racematch)
 
 # Mixing
 
-mp_agemix <- mp[!is.na(p_age5)] %>%
-  .[, .N, keyby = .(ego.age5, p_age5)] %>%
-  .[, ":=" (minage = min(ego.age5, p_age5),
-            maxage = max(ego.age5, p_age5)), by = 1:nrow(.)] %>%
+mp_agemix <- mp[!is.na(p_age.grp)] %>%
+  .[, .N, keyby = .(ego.age.grp, p_age.grp)] %>%
+  .[, ":=" (minage = min(ego.age.grp, p_age.grp),
+            maxage = max(ego.age.grp, p_age.grp)), by = 1:nrow(.)] %>%
   .[, agecomb := paste0(minage, maxage)] %>%
   .[, .(N = sum(N)), agecomb] %>%
   .[, P := round(N / sum(N), 4)]
 
 print(mp_agemix)
 
-cp_agemix <- cp[!is.na(p_age5)] %>%
-  .[, .N, keyby = .(ego.age5, p_age5)] %>%
-  .[, ":=" (minage = min(ego.age5, p_age5),
-            maxage = max(ego.age5, p_age5)), by = 1:nrow(.)] %>%
+cp_agemix <- cp[!is.na(p_age.grp)] %>%
+  .[, .N, keyby = .(ego.age.grp, p_age.grp)] %>%
+  .[, ":=" (minage = min(ego.age.grp, p_age.grp),
+            maxage = max(ego.age.grp, p_age.grp)), by = 1:nrow(.)] %>%
   .[, agecomb := paste0(minage, maxage)] %>%
   .[, .(N = sum(N)), agecomb] %>%
   .[, P := round(N / sum(N), 4)]
@@ -280,21 +280,21 @@ print(cp_agemix)
 
 # Matching
 
-mp_age5match <- mp[!is.na(p_age5)] %>%
-  .[, .N, keyby = .(ego.age5, p_age5)] %>%
-  .[, sameage := ifelse(ego.age5 == p_age5, 1, 0)] %>%
+mp_age.grpmatch <- mp[!is.na(p_age.grp)] %>%
+  .[, .N, keyby = .(ego.age.grp, p_age.grp)] %>%
+  .[, sameage := ifelse(ego.age.grp == p_age.grp, 1, 0)] %>%
   .[, .(N = sum(N)), sameage] %>%
   .[, P := round(N / sum(N), 4)]
 
-print(mp_age5match)
+print(mp_age.grpmatch)
 
-cp_age5match <- cp[!is.na(p_age5)] %>%
-  .[, .N, keyby = .(ego.age5, p_age5)] %>%
-  .[, sameage := ifelse(ego.age5 == p_age5, 1, 0)] %>%
+cp_age.grpmatch <- cp[!is.na(p_age.grp)] %>%
+  .[, .N, keyby = .(ego.age.grp, p_age.grp)] %>%
+  .[, sameage := ifelse(ego.age.grp == p_age.grp, 1, 0)] %>%
   .[, .(N = sum(N)), sameage] %>%
   .[, P := round(N / sum(N), 4)]
 
-print(cp_age5match)
+print(cp_age.grpmatch)
 
 
 # %% EGO SEX ROLE --------------------------------------------------------------
@@ -371,7 +371,7 @@ print(cp_analrole)
 
 # store unique levels for categorical variables
 race_unq <- data.table(race.cat = sort(unique(deg_data$race.cat)))
-age5_unq <- data.table(age5 = sort(unique(deg_data$age5)))
+age.grp_unq <- data.table(age.grp = sort(unique(deg_data$age.grp)))
 
 main_degt2_unq <- data.table(
   degmain_trunc2 = sort(unique(deg_data$degmain_trunc2))
@@ -385,24 +385,24 @@ cilabs <- c("ll95", "ul95")
 # set up tables for predictor level combinations
 ra_grid <- expand.grid(
   race.cat = unlist(race_unq),
-  age5 = unlist(age5_unq)
+  age.grp = unlist(age.grp_unq)
 )
 
 rac_grid <- expand.grid(
   race.cat = unlist(race_unq),
-  age5 = unlist(age5_unq),
+  age.grp = unlist(age.grp_unq),
   degcasl = unlist(casual_deg_unq)
 )
 
 ram_grid <- expand.grid(
   race.cat = unlist(race_unq),
-  age5 = unlist(age5_unq),
+  age.grp = unlist(age.grp_unq),
   degmain_trunc2 = unlist(main_degt2_unq)
 )
 
 racm_grid <- expand.grid(
   race.cat = unlist(race_unq),
-  age5 = unlist(age5_unq),
+  age.grp = unlist(age.grp_unq),
   degcasl = unlist(casual_deg_unq),
   degmain_trunc2 = unlist(main_degt2_unq)
 )
@@ -432,7 +432,7 @@ predict_degree_prob <- function(yvar, xvar, dat, newdat) {
 mainprob_by_ra <- lapply(main_bin, function(x) {
   predict_degree_prob(
     yvar = x,
-    xvar = c("race.cat", "factor(age5)"),
+    xvar = c("race.cat", "factor(age.grp)"),
     dat = deg_data,
     newdat = ra_grid
   )
@@ -442,7 +442,7 @@ mainprob_by_ra <- lapply(main_bin, function(x) {
 ## ... EXPECTED MAIN DEGREE (BY RACE, AGE, AND CASUAL DEGREE)
 
 fit_mdeg_joint <- glm(
-  degmain_trunc2 ~ race.cat + factor(age5) + factor(degcasl),
+  degmain_trunc2 ~ race.cat + factor(age.grp) + factor(degcasl),
   data = deg_data,
   family = "quasipoisson"
 )
@@ -464,10 +464,10 @@ print(pred_mdeg_joint)
 # main_concurrent_prob <- deg_data[, mean(main_conc_ind)]
 # round(main_concurrent_prob, 3)
 
-deg_data[, .(id, race.cat, age5, degmain, degcasl, main_conc_ind)][]
+deg_data[, .(id, race.cat, age.grp, degmain, degcasl, main_conc_ind)][]
 
 fit_main_concurrent <- glm(
-  main_conc_ind ~ race.cat + factor(age5) + factor(degcasl),
+  main_conc_ind ~ race.cat + factor(age.grp) + factor(degcasl),
   family = "binomial",
   data = deg_data
 )
@@ -497,7 +497,7 @@ casl_bin <- names(deg_data)[grepl("casl[0-5]{1}", names(deg_data))]
 caslprob_by_ra <- lapply(casl_bin, function(x) {
     predict_degree_prob(yvar = x,
                         xvar = c("race.cat",
-                                 "factor(age5)"),
+                                 "factor(age.grp)"),
                         dat = deg_data,
                         newdat = ra_grid)
   })
@@ -509,7 +509,7 @@ caslprob_by_ra %>% print
 caslprob_by_ra <- lapply(casl_bin, function(x) {
   predict_degree_prob(
     yvar = x,
-    xvar = c("race.cat", "factor(age5)"),
+    xvar = c("race.cat", "factor(age.grp)"),
     dat = deg_data,
     newdat = ra_grid
   )
@@ -521,7 +521,7 @@ print(caslprob_by_ra)
 ## ... EXPECTED MAIN DEGREE (BY RACE, AGE, AND MAIN DEGREE)
 
 fit_cdeg_joint <- glm(
-  degcasl ~ race.cat + factor(age5) + factor(degmain_trunc2),
+  degcasl ~ race.cat + factor(age.grp) + factor(degmain_trunc2),
   data = deg_data,
   family = "quasipoisson"
 )
@@ -545,7 +545,7 @@ print(pred_cdeg_joint)
 # round(casl_concurrent_prob, 3)
 
 fit_casl_concurrent <- glm(
-  casl_conc_ind ~ race.cat + factor(age5) + factor(degmain_trunc2),
+  casl_conc_ind ~ race.cat + factor(age.grp) + factor(degmain_trunc2),
   family = "binomial",
   data = deg_data
 )
@@ -600,7 +600,7 @@ pinst_rate[, .(mean = mean(inst_wkrate), var = var(inst_wkrate))]
 # join deg_data and pinst_rate
 pinst_rate <- deg_data[
   pinst_rate,
-  .(id, age, age5, race.cat,
+  .(id, age, age.grp, race.cat,
     degmain_trunc2, degcasl,
     inst_wkrate)
     ]
@@ -612,7 +612,7 @@ print(pinst_rate)
 
 fit_inst_joint <- glm(
   inst_wkrate ~
-    race.cat + factor(age5) + factor(degcasl) + factor(degmain_trunc2),
+    race.cat + factor(age.grp) + factor(degcasl) + factor(degmain_trunc2),
   data = pinst_rate,
   family = "quasipoisson"
 )
@@ -666,7 +666,7 @@ nparams <- list(
               degpred_joint = main_pred_joint,
               concurrent = as.data.table(pred_main_concurrent),
               racematch = mp_racematch,
-              age5match = mp_age5match,
+              age.grpmatch = mp_age.grpmatch,
               durat_wks = main_durat_wks,
               role.class = mp_analrole
             ),
@@ -675,7 +675,7 @@ nparams <- list(
               degpred_joint = casl_pred_joint,
               concurrent = as.data.table(pred_casl_concurrent),
               racematch = cp_racematch,
-              age5match = cp_age5match,
+              age.grpmatch = cp_age.grpmatch,
               durat_wks = casl_durat_wks,
               role.class = cp_analrole
             ),

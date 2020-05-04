@@ -47,27 +47,27 @@ print(race.dist)
 # State-Level by Age Group among Men Who Have Sex with Men in the United
 # States. Open Forum Infect Dis. 2018 May 29
 
-age5.lvls <- list("18-24" = list(min = 18, max = 24),
+age.grp.lvls <- list("18-24" = list(min = 18, max = 24),
                   "25-34" = list(min = 25, max = 34),
                   "35-44" = list(min = 35, max = 44),
                   "45-54" = list(min = 45, max = 54),
                   "55+"   = list(min = 55, max = 64))
 
-age5.prob <- c(0.129, 0.242, 0.239, 0.216, 0.174)
-age5.num <- round(num * age5.prob)
-sum(age5.num) == num
+age.grp.prob <- c(0.129, 0.242, 0.239, 0.216, 0.174)
+age.grp.num <- round(num * age.grp.prob)
+sum(age.grp.num) == num
 
-age5.dist <- data.table(age5.lvls = names(age5.lvls), age5.prob, age5.num)
+age.grp.dist <- data.table(age.grp.lvls = names(age.grp.lvls), age.grp.prob, age.grp.num)
 
 # ... JOINT RACExAGE
 
 raceage.dist <- cbind(
   expand.grid(race = race.dist$race.lvls,
-              age5 = age5.dist$age5.lvls),
+              age.grp = age.grp.dist$age.grp.lvls),
   expand.grid(race.prob = race.dist$race.prob,
-              age5.prob = age5.dist$age5.prob)) %>%
+              age.grp.prob = age.grp.dist$age.grp.prob)) %>%
   setDT %>%
-  .[, raceage.prob := race.prob * age5.prob]
+  .[, raceage.prob := race.prob * age.grp.prob]
 
 print(raceage.dist)
 sum(raceage.dist$raceage.prob)
@@ -76,10 +76,10 @@ sum(raceage.dist$raceage.prob)
 # ... MAIN DEGREE DISTRIBUTION
 
 maindeg.dist <- pdat$main$degprob[
-  order(race.cat, age5),
+  order(race.cat, age.grp),
   .(maindeg.prob = weighted.mean(
       preds,
-      raceage.dist[order(race, age5), raceage.prob])
+      raceage.dist[order(race, age.grp), raceage.prob])
     ),
   outcome]
 
@@ -90,10 +90,10 @@ print(maindeg.dist)
 # ... CASUAL DEGREE DISTRIBUTION
 
 casldeg.dist <- pdat$casl$degprob[
-  order(race.cat, age5),
+  order(race.cat, age.grp),
   .(casldeg.prob = weighted.mean(
       preds,
-      raceage.dist[order(race, age5), raceage.prob])
+      raceage.dist[order(race, age.grp), raceage.prob])
     ),
   outcome]
 
@@ -106,53 +106,53 @@ print(casldeg.dist)
 ram_grid <- cbind(
   expand.grid(
     race.cat = race.dist$race.lvls,
-    age5.cat = age5.dist$age5.lvls,
+    age.grp.cat = age.grp.dist$age.grp.lvls,
     degmain.cat = maindeg.dist$outcome
   ),
   expand.grid(
     race.prob = race.dist$race.prob,
-    age5.prob = age5.dist$age5.prob,
+    age.grp.prob = age.grp.dist$age.grp.prob,
     degmain.prob = maindeg.dist$maindeg.prob
   )
   ) %>%
   setDT  %>%
-  .[, jt_prob := race.prob * age5.prob * degmain.prob]
+  .[, jt_prob := race.prob * age.grp.prob * degmain.prob]
 
 print(ram_grid)
 
 rac_grid <- cbind(
   expand.grid(
     race.cat = race.dist$race.lvls,
-    age5.cat = age5.dist$age5.lvls,
+    age.grp.cat = age.grp.dist$age.grp.lvls,
     degcasl.cat = casldeg.dist$outcome
   ),
   expand.grid(
     race.prob = race.dist$race.prob,
-    age5.prob = age5.dist$age5.prob,
+    age.grp.prob = age.grp.dist$age.grp.prob,
     degcasl.prob = casldeg.dist$casldeg.prob
   )
   ) %>%
   setDT  %>%
-  .[, jt_prob := race.prob * age5.prob * degcasl.prob]
+  .[, jt_prob := race.prob * age.grp.prob * degcasl.prob]
 
 print(rac_grid)
 
 racm_grid <- cbind(
   expand.grid(
     race.cat = race.dist$race.lvls,
-    age5.cat = age5.dist$age5.lvls,
+    age.grp.cat = age.grp.dist$age.grp.lvls,
     degcasl.cat = casldeg.dist$outcome,
     degmain.cat = maindeg.dist$outcome
   ),
   expand.grid(
     race.prob = race.dist$race.prob,
-    age5.prob = age5.dist$age5.prob,
+    age.grp.prob = age.grp.dist$age.grp.prob,
     degcasl.prob = casldeg.dist$casldeg.prob,
     degmain.prob = maindeg.dist$maindeg.prob
   )
   ) %>%
   setDT  %>%
-  .[, jt_prob := race.prob * age5.prob * degcasl.prob * degmain.prob]
+  .[, jt_prob := race.prob * age.grp.prob * degcasl.prob * degmain.prob]
 
 print(racm_grid)
 
@@ -200,7 +200,7 @@ lt_long <- lapply(lt, function(x) pull_lt(data = x)) %>% rbindlist
 
 lt_wide <- dcast(lt_long, age ~ race, value.var = "qx") %>%
   .[, agestart := stringr::str_extract(age, "^[0-9]{2}")] %>%
-  .[, age5 := dplyr::case_when(
+  .[, age.grp := dplyr::case_when(
     agestart %in% c(18:24) ~ "[18, 25)",
     agestart %in% c(25:34) ~ "[25, 35)",
     agestart %in% c(35:44) ~ "[35, 45)",
@@ -211,7 +211,7 @@ lt_wide <- dcast(lt_long, age ~ race, value.var = "qx") %>%
 mort_rates <- lt_wide[, .(B = mean(nhblack),
                           H = mean(hisp),
                           W = mean(nhwhite)),
-                          by = age5]
+                          by = age.grp]
 
 # Assign Other the same mortality rate as Whites
 mort_rates[, O := W]
@@ -221,15 +221,15 @@ print(mort_rates_annual_raspec)
 
 mort_rates_long <- melt(
   as.data.table(mort_rates_annual_raspec),
-  id.vars = "age5",
+  id.vars = "age.grp",
   measure.vars = c("B", "H", "O", "W")
   ) %>%
-  .[, .(age5, race = variable, rate_percap = value)] %>%
-  .[, age5_num := rep(1:5, 4)]
+  .[, .(age.grp, race = variable, rate_percap = value)] %>%
+  .[, age.grp_num := rep(1:5, 4)]
 
 mort_rates_long <- cbind(
   mort_rates_long,
-  raceage.dist[order(race, age5), .(age5, race, raceage.prob)]
+  raceage.dist[order(race, age.grp), .(age.grp, race, raceage.prob)]
 )
 
 print(mort_rates_long)
@@ -246,13 +246,13 @@ print(mort_rate_annual_popmargin)
 set.seed(19410524)
 
 ## Assign age
-attr_age5 <- sample(names(age5.lvls),
+attr_age.grp <- sample(names(age.grp.lvls),
                     size = num,
-                    prob = age5.prob,
+                    prob = age.grp.prob,
                     replace = T)
 
-attr_age.yr <- vapply(attr_age5, FUN = function(x) {
-  runif(n = 1, min = age5.lvls[[x]]$min, age5.lvls[[x]]$max + 0.99)
+attr_age.yr <- vapply(attr_age.grp, FUN = function(x) {
+  runif(n = 1, min = age.grp.lvls[[x]]$min, age.grp.lvls[[x]]$max + 0.99)
   },
   FUN.VALUE = 23.56) %>%
   unname
@@ -296,39 +296,39 @@ prop.table(table(attr_role.class))
 race.wt <- raceage.dist[,
   weight := raceage.prob / sum(raceage.prob),
   keyby = race] %>%
-  .[, .(race, age5, weight)]
+  .[, .(race, age.grp, weight)]
 
 print(race.wt)
 
-age5.wt <- raceage.dist[,
+age.grp.wt <- raceage.dist[,
   weight := raceage.prob / sum(raceage.prob),
-  keyby = age5] %>%
-  .[, .(race, age5, weight)]
+  keyby = age.grp] %>%
+  .[, .(race, age.grp, weight)]
 
-print(age5.wt)
+print(age.grp.wt)
 
 
 # %% MAIN PARTNERSHIPS ---------------------------------------------------------
 
 main_lookup <- cbind(
-  pdat$main$degpred_joint[order(race.cat, age5, degcasl)],
-  rac_grid[order(race.cat, age5.cat, degcasl.cat)]
+  pdat$main$degpred_joint[order(race.cat, age.grp, degcasl)],
+  rac_grid[order(race.cat, age.grp.cat, degcasl.cat)]
 ) %>% setDT
 
 sum(main_lookup$jt_prob)
 print(main_lookup$jt_prob)
 
-# calculate mean degree by race (marginalized over age5)
+# calculate mean degree by race (marginalized over age.grp)
 race_preds_m <-  main_lookup %>%
   .[, .(pred = weighted.mean(pred_mdeg_joint, jt_prob)), race.cat]
 
 print(race_preds_m)
 
 # calculate mean degree by age group (marginalized over race/ethnicity)
-age5_preds_m <- main_lookup %>%
-  .[, .(pred = weighted.mean(pred_mdeg_joint, jt_prob)), age5]
+age.grp_preds_m <- main_lookup %>%
+  .[, .(pred = weighted.mean(pred_mdeg_joint, jt_prob)), age.grp]
 
-print(age5_preds_m)
+print(age.grp_preds_m)
 
 # calculate mean degree by casual degree
 casl_preds_m <- main_lookup %>%
@@ -350,11 +350,11 @@ nodefactor_race_main <-
 
 print(sum(nodefactor_race_main) / 2)
 
-## nodefactor_age5
-nodefactor_age5_main <-
-  round(age5_preds_m$pred * age5.dist$age5.prob * num)
+## nodefactor_age.grp
+nodefactor_age.grp_main <-
+  round(age.grp_preds_m$pred * age.grp.dist$age.grp.prob * num)
 
-print(sum(nodefactor_age5_main) / 2)
+print(sum(nodefactor_age.grp_main) / 2)
 
 ## nodefactor_degcasl
 nodefacter_degcasl_main <-
@@ -368,15 +368,15 @@ nodematch_race.eth_main <-
 
 print(nodematch_race.eth_main)
 
-## nodematch_age5
-nodematch_age5_main <-
-  round(pdat$main$age5match[sameage == 1, P] * edges_main)
+## nodematch_age.grp
+nodematch_age.grp_main <-
+  round(pdat$main$age.grpmatch[sameage == 1, P] * edges_main)
 
-print(nodematch_age5_main)
+print(nodematch_age.grp_main)
 
 ## concurrent
-main_concpr <- pdat$main$concurrent[order(race.cat, age5, degcasl)] %>%
-  cbind(., main_lookup[, .(race.cat, age5.cat, degcasl.cat, jt_prob)])
+main_concpr <- pdat$main$concurrent[order(race.cat, age.grp, degcasl)] %>%
+  cbind(., main_lookup[, .(race.cat, age.grp.cat, degcasl.cat, jt_prob)])
 
 print(main_concpr)
 
@@ -393,21 +393,21 @@ print(durat_wks_main)
 # %% CASUAL PARTNERSHIPS -------------------------------------------------------
 
 casl_lookup <- cbind(
-  pdat$casl$degpred_joint[order(race.cat, age5, degmain_trunc2)],
-  ram_grid[order(race.cat, age5.cat, degmain.cat)]
+  pdat$casl$degpred_joint[order(race.cat, age.grp, degmain_trunc2)],
+  ram_grid[order(race.cat, age.grp.cat, degmain.cat)]
 ) %>% setDT
 
-# calculate mean degree by race (marginalized over age5 and main degree)
+# calculate mean degree by race (marginalized over age.grp and main degree)
 race_preds_c <- casl_lookup %>%
   .[, .(pred = weighted.mean(pred_cdeg_joint, jt_prob)), race.cat]
 
 print(race_preds_c)
 
 # calculate mean degree by age group (marginalized over race and main degree)
-age5_preds_c <- casl_lookup %>%
-  .[, .(pred = weighted.mean(pred_cdeg_joint, jt_prob)), age5]
+age.grp_preds_c <- casl_lookup %>%
+  .[, .(pred = weighted.mean(pred_cdeg_joint, jt_prob)), age.grp]
 
-print(age5_preds_c)
+print(age.grp_preds_c)
 
 # calculate mean degree by casual degree
 main_preds_c <- casl_lookup %>%
@@ -428,11 +428,11 @@ nodefactor_race_casl <-
 
 print(sum(nodefactor_race_casl) / 2)
 
-## nodefactor_age5
-nodefactor_age5_casl <-
-  round(age5_preds_c$pred * age5.dist$age5.prob * num)
+## nodefactor_age.grp
+nodefactor_age.grp_casl <-
+  round(age.grp_preds_c$pred * age.grp.dist$age.grp.prob * num)
 
-print(sum(nodefactor_age5_casl) / 2)
+print(sum(nodefactor_age.grp_casl) / 2)
 
 ## nodefactor_degmain
 nodefacter_degmain_casl <-
@@ -446,15 +446,15 @@ nodematch_race.eth_casl <-
 
 print(nodematch_race.eth_casl)
 
-## nodematch_age5
-nodematch_age5_casl <-
-  round(pdat$casl$age5match[sameage == 1, P] * edges_casl)
+## nodematch_age.grp
+nodematch_age.grp_casl <-
+  round(pdat$casl$age.grpmatch[sameage == 1, P] * edges_casl)
 
-print(nodematch_age5_casl)
+print(nodematch_age.grp_casl)
 
 ## concurrent
-casl_concpr <- pdat$casl$concurrent[order(race.cat, age5, degmain_trunc2)] %>%
-  cbind(., casl_lookup[, .(race.cat, age5.cat, degmain.cat, jt_prob)])
+casl_concpr <- pdat$casl$concurrent[order(race.cat, age.grp, degmain_trunc2)] %>%
+  cbind(., casl_lookup[, .(race.cat, age.grp.cat, degmain.cat, jt_prob)])
 
 print(casl_concpr)
 
@@ -472,12 +472,12 @@ print(durat_wks_casl)
 # %% ONE-TIME PARTNERSHIPS -----------------------------------------------------
 
 inst_lookup <- cbind(
-  pdat$inst$inst_joint[order(race.cat, age5, degcasl, degmain_trunc2)],
-  racm_grid[order(race.cat, age5.cat, degcasl.cat, degmain.cat)]
+  pdat$inst$inst_joint[order(race.cat, age.grp, degcasl, degmain_trunc2)],
+  racm_grid[order(race.cat, age.grp.cat, degcasl.cat, degmain.cat)]
 ) %>% setDT
 
 inst_lookup[, .N, .(race.cat, race.cat)]
-inst_lookup[, .N, .(age5, age5.cat)]
+inst_lookup[, .N, .(age.grp, age.grp.cat)]
 inst_lookup[, .N, .(degcasl, degcasl.cat)]
 inst_lookup[, .N, .(degmain_trunc2, degmain.cat)]
 
@@ -487,11 +487,11 @@ race_preds_i <- inst_lookup %>%
 
 print(race_preds_i)
 
-# instantaneous partnerships by age5
-age5_preds_i <- inst_lookup %>%
-  .[, .(pred = weighted.mean(pred_inst_joint, jt_prob)), age5]
+# instantaneous partnerships by age.grp
+age.grp_preds_i <- inst_lookup %>%
+  .[, .(pred = weighted.mean(pred_inst_joint, jt_prob)), age.grp]
 
-print(age5_preds_i)
+print(age.grp_preds_i)
 
 # instantaneous partnerships by main degree
 main_preds_i <- inst_lookup %>%
@@ -520,11 +520,11 @@ nodefactor_race_i <-
 
 print(sum(nodefactor_race_i) / 2)
 
-## nodefactor_age5
-nodefactor_age5_i <-
-  round(age5_preds_i$pred * age5.dist$age5.prob * num)
+## nodefactor_age.grp
+nodefactor_age.grp_i <-
+  round(age.grp_preds_i$pred * age.grp.dist$age.grp.prob * num)
 
-print(sum(nodefactor_age5_i) / 2)
+print(sum(nodefactor_age.grp_i) / 2)
 
 ## nodefactor_degmain
 nodefactor_degmain_i <-
@@ -547,7 +547,7 @@ out <- list()
 
 out$inputs <- list()
 out$inputs$race.dist <- race.dist[, -c("race.num")]
-out$inputs$age5.dist <- age5.dist[, -c("age5.num")]
+out$inputs$age.grp.dist <- age.grp.dist[, -c("age.grp.num")]
 out$inputs$main.dist <- maindeg.dist[, .(degmain_trunc2 = outcome,
                                          prob = maindeg.prob)]
 out$inputs$casl.dist <- casldeg.dist[, .(degcasl = outcome,
@@ -566,9 +566,9 @@ for (i in 1:length(race.lvls)) {
   out$demog[paste0("num.", race.dist[i, race.lvls])] <- race.dist[i, race.num]
 }
 
-# Age5
-for (i in 1:length(age5.lvls)) {
-  out$demog[paste0("num.age5_", i)] <- age5.dist[i, age5.num]
+# Age.Grp
+for (i in 1:length(age.grp.lvls)) {
+  out$demog[paste0("num.age.grp_", i)] <- age.grp.dist[i, age.grp.num]
 }
 
 # Age limits
@@ -579,7 +579,7 @@ for (i in 1:(length(mort_rates_annual_raspec) - 1)) {
   for (j in 1:nrow(mort_rates_annual_raspec)) {
     out$demog[paste0("mortrate.",
     "race.", names(mort_rates_annual_raspec)[i + 1],
-    ".age5_", j)] <-
+    ".age.grp_", j)] <-
     round(1 - (1 - mort_rates_annual_raspec[j, i + 1]) ^ (1 / 52), 6)
   }
 }
@@ -602,10 +602,10 @@ print(out$demog)
 out$netmain <- list()
 out$netmain$edges <- edges_main
 out$netmain$nodefactor_race <- nodefactor_race_main
-out$netmain$nodefactor_age5 <- nodefactor_age5_main
+out$netmain$nodefactor_age.grp <- nodefactor_age.grp_main
 out$netmain$nodefactor_degcasl <- nodefacter_degcasl_main
 out$netmain$nodematch_race.eth <- nodematch_race.eth_main
-out$netmain$nodematch_age5 <- nodematch_age5_main
+out$netmain$nodematch_age.grp <- nodematch_age.grp_main
 out$netmain$concurrent <- concurrent_main
 out$netmain$durat_wks <- durat_wks_main
 
@@ -614,10 +614,10 @@ out$netmain$durat_wks <- durat_wks_main
 out$netcasl <- list()
 out$netcasl$edges <- edges_casl
 out$netcasl$nodefactor_race <- nodefactor_race_casl
-out$netcasl$nodefactor_age5 <- nodefactor_age5_casl
+out$netcasl$nodefactor_age.grp <- nodefactor_age.grp_casl
 out$netcasl$nodefactor_degmain <- nodefacter_degmain_casl
 out$netcasl$nodematch_race.eth <- nodematch_race.eth_casl
-out$netcasl$nodematch_age5 <- nodematch_age5_casl
+out$netcasl$nodematch_age.grp <- nodematch_age.grp_casl
 out$netcasl$concurrent <- concurrent_casl
 out$netcasl$durat_wks <- durat_wks_casl
 
@@ -625,7 +625,7 @@ out$netcasl$durat_wks <- durat_wks_casl
 out$netinst <- list()
 out$netinst$edges <- edges_inst
 out$netinst$nodefactor_race <- nodefactor_race_i
-out$netinst$nodefactor_age5 <- nodefactor_age5_i
+out$netinst$nodefactor_age.grp <- nodefactor_age.grp_i
 out$netinst$nodefactor_degmain <- nodefactor_degmain_i
 out$netinst$nodefactor_degcasl <- nodefactor_degcasl_i
 
@@ -633,8 +633,10 @@ out$netinst$nodefactor_degcasl <- nodefactor_degcasl_i
 
 out$attr <- list()
 out$attr$age <- attr_age.yr
+out$attr$sqrt.age <- sqrt(attr_age.yr)
 out$attr$age.wk <- attr_age.yr * 52
-out$attr$age5 <- attr_age5
+out$attr$age.grp.char <- attr_age.grp
+out$attr$age.grp <- as.numeric(cut(attr_age.yr, c(18, 25, 35, 45, 55, 65), right = FALSE))
 out$attr$race <- attr_race
 out$attr$deg.main <- attr_deg.main
 out$attr$deg.casl <- attr_deg.casl

@@ -28,7 +28,7 @@ theme_set(theme_classic())
 # Check Data
 
 varsel <- c(
-  "id", "race.cat", "age", "age5", "hiv.ego", names(an)[grep("pn", names(an))]
+  "id", "race.cat", "age", "age.grp", "hiv.ego", names(an)[grep("pn", names(an))]
 )
 
 st_options(plain.ascii = T,
@@ -76,7 +76,7 @@ degree_est <- function(data, model_fml) {
 
 
 # Generate model formulas
-indvars  <- c("race.cat", "age5")
+indvars  <- c("race.cat", "age.grp")
 outcomes <- c("pnoa_12m", "pna_12m", "pnua_12m", "pn_ongoing")
 
 rhs <- glue::glue("{ indvars[1] } * factor({ indvars[2] })")
@@ -101,7 +101,7 @@ summary(deg_ests$pna_12m$fits$qpois_fit)         # cumulative
 summary(deg_ests$pnua_12m$fits$qpois_fit)        # cumulative
 summary(deg_ests$pn_ongoing$fits$qpois_fit)      # ongoing
 
-dfSummary(an[, .(race.cat, age5, pn_ongoing)])
+dfSummary(an[, .(race.cat, age.grp, pn_ongoing)])
 
 # Function to predict degree for specified combinations of traits
 predict_pnum <- function(yvec = outcomes, model_list, pf) {
@@ -110,10 +110,10 @@ predict_pnum <- function(yvec = outcomes, model_list, pf) {
 
   pred_df <- expand.grid(
     race.cat = unique(an$race.cat),
-    age5 = unique(an$age5),
+    age.grp = unique(an$age.grp),
     hiv.ego = 0:1) %>%
     setDT %>%
-    .[order(race.cat, age5)]
+    .[order(race.cat, age.grp)]
 
   plot_facet <- "~ pn_measure"
 
@@ -137,7 +137,7 @@ predict_pnum <- function(yvec = outcomes, model_list, pf) {
 
   # plot predicted means
   preds_out[["plot"]] <- preds_out[["predictions"]] %>%
-    ggplot(aes(x = age5,
+    ggplot(aes(x = age.grp,
                y = pred,
                col = race.cat)) +
       geom_line(size = 2) +

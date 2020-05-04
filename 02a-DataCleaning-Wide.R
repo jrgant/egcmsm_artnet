@@ -98,7 +98,7 @@ glimpse(avs)
 # State-Level by Age Group among Men Who Have Sex with Men in the United
 # States. Open Forum Infect Dis. 2018 May 29
 
-avs[, age5 := case_when(
+avs[, age.grp := case_when(
   age <= 24 ~ 1,
   age >= 25 & age <= 34 ~ 2,
   age >= 35 & age <= 44 ~ 3,
@@ -107,9 +107,9 @@ avs[, age5 := case_when(
   TRUE ~ NA_real_
   )]
 
-table(is.na(avs$age5))
+table(is.na(avs$age.grp))
 
-avs[, stby(age, age5, descr)]
+avs[, stby(age, age.grp, descr)]
 
 # %% HIV Status --------------------------------------------------------
 
@@ -152,6 +152,7 @@ freq(avs$hiv2) %>% print
 
 freq(avs$hiv3) %>% print
 
+
 # %% PrEP Status --------------------------------------------------------------
 
 freq(avs$prep_revised) %>% print
@@ -165,6 +166,7 @@ avs[, an_prep_current := ifelse(
   )]
 
 freq(avs$an_prep_current) %>% print
+
 
 # %% STI Testing Variables (Ever PrEP Users) -----------------------------------
 

@@ -131,7 +131,7 @@ unql(plong$id)
 plong2 <- plong[an[, .(id,
                        sub_date,
                        ego.age = age,
-                       ego.age5 = age5,
+                       ego.age.grp = age.grp,
                        ego.race.cat = race.cat,
                        ego.hiv = hiv.ego,
                        ego.ongoing = pn_ongoing)],
@@ -456,7 +456,7 @@ anl[, p_age_imputed := dplyr::case_when(
       .(id, pid)] %>%
   # set lower bound to minimum partner age reported in dataset
   .[, p_age_imputed := ifelse(p_age_imputed < 11, 11, p_age_imputed)] %>%
-  .[, p_age5 := dplyr::case_when(
+  .[, p_age.grp := dplyr::case_when(
           p_age_imputed <= 24 ~ 1,
           p_age_imputed >= 25 & p_age_imputed <= 34 ~ 2,
           p_age_imputed >= 35 & p_age_imputed <= 44 ~ 3,
@@ -486,7 +486,7 @@ impmod_page <- lm(
 
 summary(impmod_page)
 hist(residuals(impmod_page))
-plot(impmod_page)
+# plot(impmod_page)
 
 p_age_grid <- expand.grid(
   ego.race.cat = unique(anl$ego.race.cat),
@@ -708,7 +708,7 @@ class(anl$durat_wks)
 
 anl[ptype %in% 1:2, .(
   id, pid,
-  ptype, ego.race.cat, ego.age5,
+  ptype, ego.race.cat, ego.age.grp,
   p_startyyyy, p_startmm, p_startdt, sub_date,
   durat_days, durat_wks
 )]
