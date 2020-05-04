@@ -12,7 +12,7 @@ pacman::p_load(
   summarytools
 )
 
-an <- fread(paste0(pd_path, "/artnet-wide-cleaned.csv"))
+an <- fread(paste0(Sys.getenv("ARTNET_PATH"), "/artnet-wide-cleaned.csv"))
 names(an)
 
 # Set ggplot theme globally
