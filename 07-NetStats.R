@@ -642,6 +642,8 @@ out$attr$race <- attr_race
 out$attr$deg.main <- attr_deg.main
 out$attr$deg.casl <- attr_deg.casl
 out$attr$role.class <- attr_role.class
+## out$attr$deg.tot
+## out$attr$diag.status
 
 # print(out$attr)
 
