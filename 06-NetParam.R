@@ -312,6 +312,7 @@ cp <- anl[ptype == 2 & p_ongoing_ind == 1, ..pcols]
 
 mp_racemix <- mp[, ctable(ego.race.cat, p_race.cat, prop = "n", useNA = "no")]
 mp_mixmat <- with(mp, round(prop.table(table(ego.race.cat, p_race.cat)), 3))
+
 mp_racemix
 mp_mixmat
 
@@ -552,7 +553,6 @@ predict_degree_prob <- function(yvar, xvar, dat, newdat) {
   preds <- predict(fit, newdat, type = "response")
 
   as.data.table(cbind(newdat, preds, outcome = y))
-
 }
 
 # used to estimate the distribution of main degree
