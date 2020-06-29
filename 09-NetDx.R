@@ -2,16 +2,12 @@
 
 suppressMessages(library(EpiModel))
 
-mdx <- readRDS("netest/dx_main.Rds")
-cdx <- readRDS("netest/dx_casl.Rds")
-idx <- readRDS("netest/dx_inst.Rds")
-
-
+dx <- readRDS("netest/netdx.Rds")
 
 # %% PLOT SIMULATED NETWORKS ---------------------------------------------------
 
 # Quick Diagnostics
-plot(mdx, qnts = 0.95, sim.col = "cornflowerblue")
+plot(dx[[1]], qnts = 0.95, sim.col = "cornflowerblue")
 plot(cdx, qnts = 0.95, sim.col = "cornflowerblue")
 plot(idx, qnts = 0.95, sim.col = "cornflowerblue")
 
