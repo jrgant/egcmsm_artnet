@@ -1,9 +1,13 @@
 # %% SETUP ---------------------------------------------------------------------
 
-pacman::p_load(data.table,
-               EpiModelHIV,
-               readxl,
-               magrittr)
+pacman::p_load(
+  data.table,
+  EpiModelHIV,
+  readxl,
+  magrittr,
+  ggplot2,
+  ggthemes
+)
 
 
 # %% INPUTS --------------------------------------------------------------------
@@ -17,6 +21,8 @@ str(degdist)
 # Predictions based on ART-Net Partnership Data
 pdat <- readRDS("netstats/predictions.Rds")
 str(pdat)
+
+epistats <- readRDS("netstats/epistats.Rds")
 
 
 # %% INITIALIZE DEMOGRAPHICS ---------------------------------------------------
@@ -47,25 +53,35 @@ print(race.dist)
 # State-Level by Age Group among Men Who Have Sex with Men in the United
 # States. Open Forum Infect Dis. 2018 May 29
 
-age.grp.lvls <- list("18-24" = list(min = 18, max = 24),
-                  "25-34" = list(min = 25, max = 34),
-                  "35-44" = list(min = 35, max = 44),
-                  "45-54" = list(min = 45, max = 54),
-                  "55+"   = list(min = 55, max = 64))
+age.grp.lvls <- list(
+  "18-24" = list(min = 18, max = 24),
+  "25-34" = list(min = 25, max = 34),
+  "35-44" = list(min = 35, max = 44),
+  "45-54" = list(min = 45, max = 54),
+  "55+"   = list(min = 55, max = 64)
+)
 
 age.grp.prob <- c(0.129, 0.242, 0.239, 0.216, 0.174)
 age.grp.num <- round(num * age.grp.prob)
 sum(age.grp.num) == num
 
-age.grp.dist <- data.table(age.grp.lvls = names(age.grp.lvls), age.grp.prob, age.grp.num)
+age.grp.dist <- data.table(
+  age.grp.lvls = names(age.grp.lvls),
+  age.grp.prob,
+  age.grp.num
+)
 
 # ... JOINT RACExAGE
 
 raceage.dist <- cbind(
-  expand.grid(race = race.dist$race.lvls,
-              age.grp = age.grp.dist$age.grp.lvls),
-  expand.grid(race.prob = race.dist$race.prob,
-              age.grp.prob = age.grp.dist$age.grp.prob)) %>%
+  expand.grid(
+    race = race.dist$race.lvls,
+    age.grp = age.grp.dist$age.grp.lvls
+  ),
+  expand.grid(
+    race.prob = race.dist$race.prob,
+    age.grp.prob = age.grp.dist$age.grp.prob
+  )) %>%
   setDT %>%
   .[, raceage.prob := race.prob * age.grp.prob]
 
@@ -113,8 +129,7 @@ ram_grid <- cbind(
     race.prob = race.dist$race.prob,
     age.grp.prob = age.grp.dist$age.grp.prob,
     degmain.prob = maindeg.dist$maindeg.prob
-  )
-  ) %>%
+  )) %>%
   setDT  %>%
   .[, jt_prob := race.prob * age.grp.prob * degmain.prob]
 
@@ -137,22 +152,20 @@ rac_grid <- cbind(
 
 print(rac_grid)
 
-racm_grid <- cbind(
+racm_grid <- as.data.table(cbind(
   expand.grid(
     race.cat = race.dist$race.lvls,
     age.grp.cat = age.grp.dist$age.grp.lvls,
     degcasl.cat = casldeg.dist$outcome,
     degmain.cat = maindeg.dist$outcome
-  ),
+    ),
   expand.grid(
     race.prob = race.dist$race.prob,
     age.grp.prob = age.grp.dist$age.grp.prob,
     degcasl.prob = casldeg.dist$casldeg.prob,
     degmain.prob = maindeg.dist$maindeg.prob
-  )
-  ) %>%
-  setDT  %>%
-  .[, jt_prob := race.prob * age.grp.prob * degcasl.prob * degmain.prob]
+    )
+  ))[, jt_prob := race.prob * age.grp.prob * degcasl.prob * degmain.prob]
 
 print(racm_grid)
 
