@@ -124,17 +124,22 @@ freq(avs$artnetevrpos) %>% print
 # Logic: if artnetevrpos == 1 & artnetrcntrslt != 2
 freq(avs$artnetstatus) %>% print
 
-avs[, .N, keyby = .(artnetrcntrslt,
+avs[, .N, keyby = .(artnetevertest,
+                    artnetrcntrslt,
                     artnetevrpos,
-                    artnetstatus)] %>% print
+                    artnetstatus)][]
 
 # create HIV status variable
 avs[, hiv.ego := case_when(
-    !is.na(artnetstatus) ~ artnetstatus - 1,
-    artnetevrpos == 1 ~ 1,
-    artnetrcntrslt == 2 ~ 1,
-    artnetrcntrslt == 1 ~ 0,
-    TRUE ~ NA_real_)]
+  !is.na(artnetstatus) ~ artnetstatus - 1,
+  artnetevertest %in% c(NA, 0) ~ 2,  # 2 = no self-knowledge of HIV status
+  artnetevrpos == 1 ~ 1,
+  artnetrcntrslt == 2 ~ 1,
+  artnetrcntrslt == 3 & artnetevrpos == 0 ~ 0,
+  is.na(artnetrcntrslt) & is.na(artnetstatus) & artnetevrpos == 0 ~ 0,
+  artnetrcntrslt == 1 ~ 0,
+  TRUE ~ 2
+)]
 
 # set label
 label(avs$hiv.ego) <- "Derived HIV status"
@@ -142,6 +147,8 @@ freq(avs$hiv.ego) %>% print
 
 # check
 avs[, .N, keyby = .(hiv.ego,
+                    hiv3,
+                    artnetevertest,
                     artnetrcntrslt,
                     artnetevrpos,
                     artnetstatus)]
@@ -149,7 +156,6 @@ avs[, .N, keyby = .(hiv.ego,
 # compare to original HIV variables (hiv2, hiv3)
 
 freq(avs$hiv2) %>% print
-
 freq(avs$hiv3) %>% print
 
 
