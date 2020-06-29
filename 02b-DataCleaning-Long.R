@@ -21,6 +21,7 @@ an <- fread(paste0(Sys.getenv("ARTNET_PATH"), "/artnet-wide-cleaned.csv"))
 # default ggplot2 theme
 theme_set(theme_base())
 
+
 # %% INDIVIDUAL PARTNER DATA ---------------------------------------------------
 
 # Set up ID table - one row per partnership
@@ -217,12 +218,14 @@ anl[, length(unique(id))]
 table(anl$ptype)
 table(is.na(anl$sub_date))
 
-print(anl[, .(id,
-              pid,
-              ptype,
-              p_ongoing,
-              p_main_ong,
-              p_once)])
+anl[, .(
+  id,
+  pid,
+  ptype,
+  p_ongoing,
+  p_main_ong,
+  p_once
+)][]
 
 anl[, .N, .(p_once,
             p_main_ong,
@@ -242,15 +245,19 @@ anl[ptype %in% 1:2,
 anl[is.na(p_ongoing_ind), p_ongoing_ind := 0]
 
 # check coding by ptype
-anl[, .N, keyby = .(ptype, p_ongoing_ind)] %>%
-  .[, P := N / sum(N), by = ptype] %>%
-  print
+anl[, .N, keyby = .(ptype, p_ongoing_ind)
+   ][, P := N / sum(N), by = ptype][]
 
 # check main/casual ongoing indicator
-anl[ptype %in% 1:2, .N, keyby = .(ptype,
-                                  p_ongoing,
-                                  p_main_ong,
-                                  p_ongoing_ind)]
+anl[
+  ptype %in% 1:2,
+  .N,
+  keyby = .(
+    ptype,
+    p_ongoing,
+    p_main_ong,
+    p_ongoing_ind
+  )]
 
 
 # %% PARTNERSHIP DATES ---------------------------------------------------------
@@ -261,25 +268,23 @@ anl[, unique(p_startyyyydk)]
 
 # replace invalid years with NA
 anl[ptype %in% 1:2,
-    p_startyyyy := ifelse(!grepl("^(19|20)[0-9]{2}", p_startyyyy),
-                          NA, p_startyyyy)]
+    p_startyyyy := ifelse(
+      !grepl("^(19|20)[0-9]{2}", p_startyyyy),
+      NA, p_startyyyy
+    )]
 
 # check overall start dates
-anl[ptype %in% 1:2, .N, .(startyyyy_miss = is.na(p_startyyyy))] %>%
-  .[, P := N / sum(N)] %>%
-  print
+anl[ptype %in% 1:2, .N, .(startyyyy_miss = is.na(p_startyyyy))
+   ][, P := N / sum(N)][]
 
-anl[ptype %in% 1:2, .N, .(startyyyydk_miss = is.na(p_startyyyydk))] %>%
-  .[, P := N / sum(N)] %>%
-  print
+anl[ptype %in% 1:2, .N, .(startyyyydk_miss = is.na(p_startyyyydk))
+   ][, P := N / sum(N)][]
 
-anl[ptype %in% 1:2, .N, .(startmm_miss = is.na(p_startmm))] %>%
-  .[, P := N / sum(N)] %>%
-  print
+anl[ptype %in% 1:2, .N, .(startmm_miss = is.na(p_startmm))
+   ][, P := N / sum(N)][]
 
-anl[ptype %in% 1:2, .N, .(maincasendmm_miss = is.na(p_maincasendmm))] %>%
-  .[, P := N / sum(N)] %>%
-  print
+anl[ptype %in% 1:2, .N, .(maincasendmm_miss = is.na(p_maincasendmm))
+   ][, P := N / sum(N)][]
 
 # where startyyyy missing and startyyyydk estimate present,
 # impute partnership start date
@@ -370,13 +375,11 @@ anl[ptype %in% 1:2, ":=" (
     )
 )]
 
-anl[
-  ptype %in% 1:2, .(
+anl[ptype %in% 1:2, .(
     id, pid, ptype, psubtype,
     p_rai, p_iai, p_roi, p_ioi,
     ego.anal.role, ego.oral.role
   )]
-
 
 sc <- names(anl)[grepl("once", names(anl))][2:7]
 anl[, table(ptype, psubtype, exclude = NULL)]
@@ -401,27 +404,19 @@ anl[, p_race.cat := ifelse(
         )]
 
 anl[, .N, .(p_race, p_hisp, p_race.cat)]
-
-anl[, .(id,
-        pid,
-        nn,
-        p_hisp,
-        p_race,
-        p_race.cat)]
-
+anl[, .(id, pid, nn, p_hisp, p_race, p_race.cat)]
 anl[, .N, .(id)][, summary(N)]
 
 
-# %% IMPUTE PARTNER AGE --------------------------------------------------------
+# %% IMPUTE PARTNER AGE (FIRST PASS BASED ON RELAGE RESPONSE) ------------------
 
-# Source for age imputation:
+## Source for age imputation:
+## Weiss KM, Goodreau SM, Morris M, Prasad P, Ramaraju R, Sanchez T, et al.
+## Egocentric Sexual Networks of Men Who Have Sex with Men in the United States:
+## Results from the ARTnet Study. medRxiv. 2019. doi:10.1101/19010579
 
-# Weiss KM, Goodreau SM, Morris M, Prasad P, Ramaraju R, Sanchez T, et al.
-# Egocentric Sexual Networks of Men Who Have Sex with Men in the United States:
-# Results from the ARTnet Study. medRxiv. 2019. doi:10.1101/19010579
-
-# @NOTE:
-# - I used a different method to impute these values than in the Weiss paper
+## @NOTE:
+## - I used a different method to impute these values than in the Weiss paper
 
 plot(density(anl$p_age, na.rm = T))
 anl[, .N, key = p_age]
@@ -455,7 +450,7 @@ anl[, p_age_imputed := dplyr::case_when(
           TRUE ~ NA_integer_),
       .(id, pid)] %>%
   # set lower bound to minimum partner age reported in dataset
-  .[, p_age_imputed := ifelse(p_age_imputed < 11, 11, p_age_imputed)] %>%
+  .[, p_age_imputed := ifelse(p_age_imputed < 11, 11, round(p_age_imputed))] %>%
   .[, p_age.grp := dplyr::case_when(
           p_age_imputed <= 24 ~ 1,
           p_age_imputed >= 25 & p_age_imputed <= 34 ~ 2,
@@ -466,9 +461,7 @@ anl[, p_age_imputed := dplyr::case_when(
     )]
 
 anl[, .(p_age, p_age_imputed)][]
-
 anl[!is.na(p_age), summary(p_age)]
-
 anl[, summary(p_age_imputed)]
 
 missing_after_relage_impute <- anl[, sum(is.na(p_age_imputed))]
@@ -476,102 +469,115 @@ missing_after_relage_impute
 
 anl[p_age_imputed < 15, .(
   id, pid, ego.age, p_age, p_relage, p_age_imputed
-  )]
+)]
 
-# used log of p_age_imputed to improve normality of errors
-impmod_page <- lm(
-  log(p_age_imputed) ~ ego.race.cat + ego.age + I(ego.age^2) + I(ego.age^3),
-  data = anl
-)
+## # used log of p_age_imputed to improve normality of errors
+## impmod_page <- lm(
+##   log(p_age_imputed) ~ ego.race.cat + ego.age + I(ego.age^2) + I(ego.age^3),
+##   data = anl
+## )
 
-summary(impmod_page)
-hist(residuals(impmod_page))
-# plot(impmod_page)
+## summary(impmod_page)
+## hist(residuals(impmod_page))
+## # plot(impmod_page)
 
-p_age_grid <- expand.grid(
-  ego.race.cat = unique(anl$ego.race.cat),
-  ego.age = 15:65
-)
+## p_age_grid <- expand.grid(
+##   ego.race.cat = unique(anl$ego.race.cat),
+##   ego.age = 15:65
+## )
 
-p_age_grid$preds_log <- predict(
-  impmod_page,
-  newdata = p_age_grid,
-  type = "response"
-)
+## p_age_grid$preds_log <- predict(
+##   impmod_page,
+##   newdata = p_age_grid,
+##   type = "response"
+## )
 
-p_age_grid$preds <- exp(p_age_grid$preds_log)
-print(p_age_grid)
+## p_age_grid$preds <- exp(p_age_grid$preds_log)
+## print(p_age_grid)
 
 
-# create row ID
-anl[, rowid := .I]
-anl[!is.na(p_age_imputed), p_age_imputed2 := p_age_imputed]
+## # create row ID
+## anl[, rowid := .I]
+## anl[!is.na(p_age_imputed), p_age_imputed2 := p_age_imputed]
 
-# get p_age prediction and sample from residuals
-get_agepred <- function(
-  x, y,
-  model = impmod_page,
-  resid = residuals(impmod_page)) {
+## # get p_age prediction and sample from residuals
+## get_agepred <- function(
+##   x, y,
+##   model = impmod_page,
+##   mnresid = mean(residuals(impmod_page)),
+##   sdresid = sd(residuals(impmod_page))
+##   ) {
 
-    pred <- predict(
-      model,
-      newdata = data.frame(ego.race.cat = x, ego.age = y)
-    ) + sample(resid, size = 1)
+##   pred.df <- data.frame(ego.race.cat = x, ego.age = y)
+##   pred <- predict(
+##     model,
+##     newdata = pred.df,
+##     ) + rnorm(nrow(pred.df), mean = mnresid, sd = sdresid)
 
-    exp(pred)
-  }
+##   exp(pred)
+##   }
 
-checkrep <- replicate(1000, get_agepred("black", 50))
-hist(checkrep)
-summary(checkrep)
+## checkrep <- replicate(1000, get_agepred("black", 50))
+## hist(checkrep)
+## summary(checkrep)
 
-set.seed(1044)
-anl[is.na(p_age_imputed),
-    p_age_imputed2 := get_agepred(x = ego.race.cat, y = ego.age),
-    by = rowid
-    ]
+## set.seed(1044)
+## anl[is.na(p_age_imputed),
+##     p_age_imputed2 := get_agepred(x = ego.race.cat, y = ego.age),
+##     by = rowid
+##     ]
 
-ggplot(anl) +
-  geom_density(aes(
-    x = p_age,
-    color = ego.race.cat,
-    linetype = "original age variable"
-    )) +
-  geom_density(aes(
-    x = p_age_imputed,
-    color = ego.race.cat,
-    linetype = "imputed age - based on relage"
-    )) +
-  geom_density(aes(
-    x = p_age_imputed2,
-    color = ego.race.cat,
-    linetype = "imputed age - all missing imputed"
-    )) +
-  scale_linetype_manual(values = c("solid", "dashed", "dotted")) +
-  labs(x = "age")
+## ggplot(anl) +
+##   geom_density(aes(
+##     x = p_age,
+##     color = ego.race.cat,
+##     linetype = "original age variable"
+##     )) +
+##   geom_density(aes(
+##     x = p_age_imputed,
+##     color = ego.race.cat,
+##     linetype = "imputed age - based on relage"
+##     )) +
+##   geom_density(aes(
+##     x = p_age_imputed2,
+##     color = ego.race.cat,
+##     linetype = "imputed age - all missing imputed"
+##     )) +
+##   scale_linetype_manual(values = c("solid", "dashed", "dotted")) +
+##   labs(x = "age")
 
-ggplot(anl) +
-  geom_density(aes(x = p_age, color = "p_age")) +
-  geom_density(aes(x = p_age_imputed, color = "p_age_imputed")) +
-  geom_density(aes(x = p_age_imputed2, color = "p_age_imputed2"))
+## ggplot(anl) +
+##   geom_density(aes(x = p_age, color = "p_age")) +
+##   geom_density(aes(x = p_age_imputed, color = "p_age_imputed")) +
+##   geom_density(aes(x = p_age_imputed2, color = "p_age_imputed2"))
 
-check_relage_impute <- anl[, .(
-  id, pid, p_age, p_age_imputed, p_relage, ego.age
-  )]
+## check_relage_impute <- anl[, .(
+##   id, pid, p_age, p_age_imputed, p_relage, ego.age
+##   )]
 
-check_relage_impute[, .(agediff = p_age_imputed - ego.age),
-      key = p_relage] %>%
-  .[, .(min = min(agediff),
-        max = max(agediff)),
-      key = p_relage]
+## check_relage_impute[, .(agediff = p_age_imputed - ego.age),
+##       key = p_relage] %>%
+##   .[, .(min = min(agediff),
+##         max = max(agediff)),
+##       key = p_relage]
 
-missing_p_age_data <- anl[, .(missing_p_age = sum(is.na(p_age)),
-        missing_p_ageimp1 = sum(is.na(p_age_imputed)),
-        missing_p_ageimp2 = sum(is.na(p_age_imputed2)))]
+## missing_p_age_data <- anl[, .(missing_p_age = sum(is.na(p_age)),
+##         missing_p_ageimp1 = sum(is.na(p_age_imputed)),
+##         missing_p_ageimp2 = sum(is.na(p_age_imputed2)))]
 
-summary(anl$p_age)
-summary(anl$p_age_imputed)
-summary(anl$p_age_imputed2)
+## summary(anl$p_age)
+## summary(anl$p_age_imputed)
+## summary(anl$p_age_imputed2)
+
+## # NOTE: assigned partners younger than 18 into age group 1, which
+## #       will make them [18, 25) in the ABM
+## anl[, p_age.grp2 := as.numeric(cut(
+##   p_age_imputed2,
+##   c(11, 25, 35, 45, 55, 100),
+##   right = FALSE
+## ))]
+
+## anl[, .N, p_age.grp2][order(p_age.grp2)]
 
 
 # %% IMPUTE RACE/ETHNICITY -----------------------------------------------------
@@ -580,73 +586,66 @@ summary(anl$p_age_imputed2)
 # - I used a different method to impute these values than in the Weiss paper
 
 # 4.8% missing
-missing_p_race.cat <- anl[, sum(is.na(p_race.cat)) / .N]
-missing_p_race.cat
+## missing_p_race.cat <- anl[, sum(is.na(p_race.cat)) / .N]
+## missing_p_race.cat
 
-anl[!is.na(p_race.cat), .N, .(ego.race.cat, p_race.cat)]
+## anl[!is.na(p_race.cat), .N, .(ego.race.cat, p_race.cat)]
 
-impmod_prace <- nnet::multinom(
-  p_race.cat ~ ego.race.cat + ego.age,
-  data = anl
-)
+## impmod_prace <- nnet::multinom(
+##   p_race.cat ~ ego.race.cat + ego.age + I(ego.age^2) + I(ego.age^3),
+##   data = anl
+## )
 
-range(anl$ego.age)
-unique(anl$ego.race.cat)
-table(is.na(anl$ego.age))
-table(is.na(anl$ego.race.cat))
+## summary(impmod_prace)
+## confint(impmod_prace)
 
-p_race.cat_grid <- expand.grid(
-  ego.race.cat = unique(anl$ego.race.cat),
-  ego.age = 15:65
-)
+## range(anl$ego.age)
+## unique(anl$ego.race.cat)
+## table(is.na(anl$ego.age))
+## table(is.na(anl$ego.race.cat))
 
-p_race.cat_preds <- cbind(
-  p_race.cat_grid,
-  predict(
-    impmod_prace,
-    newdata = p_race.cat_grid,
-    type = "probs"
-  )) %>%
-  as.data.frame %>%
-  select(race = ego.race.cat, age = ego.age, everything())
+## p_race.cat_grid <- expand.grid(
+##   ego.race.cat = unique(anl$ego.race.cat),
+##   ego.age = 15:65
+## )
 
-head(p_race.cat_preds)
-sapply(p_race.cat_preds, function(x) sum(is.na(x)))
+## p_race.cat_preds <- cbind(
+##   p_race.cat_grid,
+##   predict(
+##     impmod_prace,
+##     newdata = p_race.cat_grid,
+##     type = "probs"
+##   )) %>%
+##   as.data.frame %>%
+##   select(ego.race.cat, ego.age, everything())
 
-# function to extract proper partner race/eth probability
-get_weights <- function(x, y, preds = p_race.cat_preds) {
-  row <- unlist(preds[preds$race == x & preds$age == y, 3:6])
-  sample(
-    x = names(row),
-    size = 1,
-    prob = row
-  )
-}
+## head(p_race.cat_preds)
+## sapply(p_race.cat_preds, function(x) sum(is.na(x)))
 
-# assign imputed partner race variable
-anl[!is.na(p_race.cat), p_race.cat_imp := p_race.cat]
+## # function to extract proper partner race/eth probability
+## get_weights <- function(x, y, preds = p_race.cat_preds) {
+##   row <- unlist(preds[preds$ego.race.cat == x & preds$ego.age == y, 3:6])
+##   sample(
+##     x = names(row),
+##     size = 1,
+##     prob = row
+##   )
+## }
 
-# for missing partner race/ethnicity, sample based on model predictions
-set.seed(1972)
-anl[is.na(p_race.cat),
-    p_race.cat_imp := get_weights(x = ego.race.cat, y = ego.age),
-    by = rowid
-    ]
+## # assign imputed partner race variable
+## anl[!is.na(p_race.cat), p_race.cat_imp := p_race.cat]
 
-anl[, sum(is.na(ego.race.cat))]
+## # for missing partner race/ethnicity, sample based on model predictions
+## set.seed(1972)
+## anl[is.na(p_race.cat),
+##     p_race.cat_imp := get_weights(x = ego.race.cat, y = ego.age),
+##     by = rowid
+##     ]
 
-anl[!is.na(p_race.cat), .N, p_race.cat][, P := N / sum(N)][order(p_race.cat)]
-anl[, .N, p_race.cat_imp][, P := N / sum(N)][order(p_race.cat_imp)]
+## anl[, sum(is.na(ego.race.cat))]
 
-
-# %% CALCULATE AGE DIFFERENCES -------------------------------------------------
-
-# calculate age differences
-anl[, ":="(abs_agediff = abs(p_age_imputed2 - ego.age),
-           abs_sqrt_agediff = abs(sqrt(p_age_imputed) - sqrt(ego.age))
-           )]
-
-anl[, .(abs_agediff, abs_sqrt_agediff)]
+## anl[!is.na(p_race.cat), .N, p_race.cat][, P := N / sum(N)][order(p_race.cat)]
+## anl[, .N, p_race.cat_imp][, P := N / sum(N)][order(p_race.cat_imp)]
 
 
 # %% CALCULATE PARTNERSHIP DURATIONS -------------------------------------------
@@ -672,8 +671,8 @@ anl[ptype %in% 1:2 & p_ongoing_ind == 1, p_startdt := ymd(
     sep = "-")),
   by = .(id, pid)]
 
-anl[ptype %in% 1:2 & p_ongoing_ind == 1 & is.na(p_startdt)] %>% print
-anl[ptype %in% 1:2 & p_ongoing_ind == 1 & !is.na(p_startdt)] %>% print
+anl[ptype %in% 1:2 & p_ongoing_ind == 1 & is.na(p_startdt)][]
+anl[ptype %in% 1:2 & p_ongoing_ind == 1 & !is.na(p_startdt)][]
 
 datecols <- c(
   "ptype",
@@ -699,8 +698,8 @@ anl[ptype %in% 1:2 & p_ongoing_ind == 1 & !is.na(p_startdt), .(
     sub_date, p_startdt
     )]
 
-# @TODO 2020-01-28: fix this issue more naturally
-# set abs to account for imputed dates that were after the sub date
+
+# NOTE: set abs to account for imputed dates that were after the sub date
 anl[, durat_days := abs(as.numeric(sub_date - p_startdt))]
 anl[, durat_wks := round(durat_days / 7)]
 class(anl$durat_days)
@@ -716,7 +715,7 @@ anl[ptype %in% 1:2, .(
 
 # %% REFORMAT HAVEN-LABELED UNIT VARIABLES -------------------------------------
 
-## reformat sex act rate unit to calculate weekly rates in EpiStats.R
+## reformat sex act rate unit to calculate weekly sex act rates
 
 # receptive anal sex time units
 anl[, p_unitrai_fix := dplyr::case_when(
@@ -770,6 +769,160 @@ anl[ptype %in% 1:2 & p_rai == 1, summary(p_unitrai_fix)]
 anl[ptype %in% 1:2 & p_iai == 1, summary(p_unitiai_fix)]
 anl[ptype %in% 1:2 & p_roi == 1, summary(p_unitroi_fix)]
 anl[ptype %in% 1:2 & p_ioi == 1, summary(p_unitioi_fix)]
+
+# calculate act rates within partnerships
+anl[ptype %in% 1:2, ":=" (
+  recai.rate = p_recai / p_unitrai_fix,
+  insai.rate = p_insai / p_unitiai_fix,
+  recoi.rate = p_recoi / p_unitroi_fix,
+  insoi.rate = p_insoi / p_unitioi_fix,
+  recuai.rate = p_recuai1 / p_unitrai_fix,
+  insuai.rate = p_insuai1 / p_unitiai_fix
+)][, incompatible.uai := ifelse(
+       recuai.rate > recai.rate | insuai.rate > insai.rate,
+       1, NA
+)][recuai.rate > recai.rate, recuai.rate := NA
+ ][insuai.rate > insai.rate, insuai.rate := NA
+ ][, ":=" (
+    recuai.prob = recuai.rate / recai.rate,
+    insuai.prob = insuai.rate / insai.rate
+)][]
+
+# number of condom probabilities set to NA due to incompatible UAI response
+# n = 7
+anl[, sum(incompatible.uai, na.rm = TRUE)]
+
+# calculate summary act rate (aggregate over insertive/receptive)
+anl[, pid_unique := .I
+   ][ptype %in% 1:2, ":=" (
+       ai.rate = mean(c(recai.rate, insai.rate), na.rm = TRUE),
+       oi.rate = mean(c(recoi.rate, insoi.rate), na.rm = TRUE)
+    ), pid_unique]
+
+# check missing
+anl[ptype %in% 1:2, .N]
+anl[ptype %in% 1:2, sum(is.na(ai.rate))]
+anl[ptype %in% 1:2, sum(is.na(oi.rate))]
+
+# check for infinite rate calculations
+anl[
+  ptype %in% 1:2,
+  lapply(.SD, function(x) sum(x == Inf, na.rm = TRUE)),
+  .SDcols = c(
+    "recai.rate", "insai.rate",
+    "recoi.rate", "insoi.rate",
+    "recuai.rate", "insuai.rate"
+  )]
+
+# calculate proportion of sex acts condom-protected (used as per-act prob.)
+anl[
+  ptype %in% 1:2 & !is.na(recuai.prob) & !is.na(insuai.prob),
+  cond.prob := 1 - ((recuai.prob + insuai.prob) / 2)
+][]
+
+anl[
+  !is.na(recuai.prob) & is.na(insuai.prob),
+  cond.prob := 1 - recuai.prob
+][]
+
+anl[
+  is.na(recuai.prob) & !is.na(insuai.prob),
+  cond.prob := 1 - insuai.prob
+][]
+
+anl[ptype %in% 1:2, sum(is.na(cond.prob)) / .N]
+
+
+# %% EDGE CHARACTERISTICS ------------------------------------------------------
+
+## make factors of race.cat and age.grp varables
+convert2factor <- c(
+  "ego.race.cat",
+  "ego.age.grp",
+  "p_race.cat",
+  "p_age_imputed"
+)
+
+anl[, (convert2factor) := lapply(.SD, as.factor), .SDcols = convert2factor]
+
+## ## check coding
+## sapply(convert2factor, function(x) {
+##   table(anl[, get(x)], as.numeric(anl[, get(x)]))
+## })
+
+## ## create match table for ego/partner race combination
+## edge.race.combo <- anl[, .N, keyby = .(
+##     ego.race.cat, p_race.cat_imp
+## )][, P := N / sum(N)
+##  ][, ":=" (
+##        ego.race.cat2 = as.numeric(ego.race.cat),
+##        p_race.cat_imp2 = as.numeric(p_race.cat_imp),
+##        rowid = .I
+## )][!is.na(p_race.cat_imp2), race.combo := paste0(
+##        sort(c(ego.race.cat2, p_race.cat_imp2)), collapse = ""),
+##      by = rowid
+##  ]
+
+## edge.race.combo
+## unique(edge.race.combo$race.combo)
+
+## ## create match table for ego/partner age group combination
+## edge.age.combo <- anl[,
+##   .N, keyby = .(ego.age.grp, p_age.grp2)
+##  ][, P := N / sum(N)
+##  ][, rowid := .I
+##  ][, age.combo := paste0(sort(c(ego.age.grp, p_age.grp2)), collapse = ""),
+##    by = rowid
+##  ]
+
+## edge.age.combo
+## unique(edge.age.combo$age.combo)
+
+## ## joins
+## anl.rc <- anl[
+##   edge.race.combo[, .(
+##     ego.race.cat, p_race.cat_imp, p_race.cat_imp2, race.combo
+##   )], on = c("ego.race.cat", "p_race.cat_imp")
+## ]
+
+## anl.rcac <- anl.rc[edge.age.combo[, .(ego.age.grp, p_age.grp2, age.combo)],
+##                    on = c("ego.age.grp", "p_age.grp2")]
+
+## nrow(anl.rc) == nrow(anl)
+## nrow(anl.rcac) == nrow(anl)
+
+## anl <- anl.rcac
+
+
+# %% PARTNER HIV STATUS --------------------------------------------------------
+
+anl[p_hiv == 1, p_hiv2 := 1]  # HIV-positive
+anl[p_hiv == 2, p_hiv2 := 0]  # HIV-negative
+anl[p_hiv %in% 3:4 | is.na(p_hiv), p_hiv2 := 2]  # HIV status unknown
+
+anl[, .N, .(p_hiv, p_hiv2)]
+anl[ptype %in% 1:2, .N, keyby = p_hiv2]
+anl[ptype == 3, .N, keyby = p_hiv2]
+
+anl[, .N, ego.hiv]
+
+anl[ego.hiv == 0 & p_hiv2 == 0, hiv.concord := 0] # both HIV-negative
+anl[ego.hiv == 1 & p_hiv2 == 1, hiv.concord := 1] # both HIV-positive
+anl[ego.hiv == 2 & p_hiv2 == 2, hiv.concord := 2] # both HIV unknown
+anl[ego.hiv != p_hiv2, hiv.concord := 3] # HIV serodiscordant
+
+anl[, .N, keyby = .(ego.hiv, p_hiv2, hiv.concord)]
+
+
+## # %% CALCULATE AGE DIFFERENCES -------------------------------------------------
+
+## # calculate age differences
+## anl[, ":="(abs_agediff = abs(p_age_imputed2 - ego.age),
+##            abs_sqrt_agediff = abs(sqrt(p_age_imputed2) - sqrt(ego.age))
+##            )]
+
+## anl[, .(abs_agediff, abs_sqrt_agediff)]
+
 
 # %% WRITE LONG DATASET --------------------------------------------------------
 
