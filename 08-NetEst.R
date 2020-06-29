@@ -21,14 +21,16 @@ use_ncores <- 6
 suppressMessages(library("EpiModelHIV"))
 
 # Initialize network
-nw <- network.initialize(netstats$demog$num, directed = F)
-nw <- set.vertex.attribute(nw, "race.eth", netstats$attr$race)
+nw <- network.initialize(netstats$demog$num, directed = FALSE)
+nw <- set.vertex.attribute(nw, "race", netstats$attr$race)
 nw <- set.vertex.attribute(nw, "age", netstats$attr$age)
 nw <- set.vertex.attribute(nw, "age.wk", netstats$attr$age.wk)
 nw <- set.vertex.attribute(nw, "age.grp", netstats$attr$age.grp)
+nw <- set.vertex.attribute(nw, "diag.status", netstats$attr$diag.status)
 nw <- set.vertex.attribute(nw, "deg.main", netstats$attr$deg.main)
 nw <- set.vertex.attribute(nw, "deg.casl", netstats$attr$deg.casl)
 nw <- set.vertex.attribute(nw, "role.class", netstats$attr$role.class)
+
 
 # %% NOTE ------------------------------------------------------------------
 
@@ -42,21 +44,23 @@ nw <- set.vertex.attribute(nw, "role.class", netstats$attr$role.class)
 
 main_formation_full <-
   ~ edges +
-  nodefactor("race.eth", levels = NULL) +
+  nodefactor("race", levels = NULL) +
   nodefactor("age.grp", levels = NULL) +
   nodefactor("deg.casl", levels = NULL) +
+  degrange(from = 3) +
   concurrent +
-  nodematch("race.eth") +
+  nodematch("race") +
   nodematch("age.grp") +
   nodematch("role.class", levels = c(1, 2))
 
 main_formation <-
   ~ edges +
-  nodefactor("race.eth", levels = -1) +
-  nodefactor("age.grp", levels = -1) +
-  nodefactor("deg.casl", levels = -1) +
+  nodefactor("race", levels = I(2:4)) +
+  nodefactor("age.grp", levels = I(2:5)) +
+  nodefactor("deg.casl", levels = I(1:5)) +
+  degrange(from = 3) +
   concurrent +
-  nodematch("race.eth") +
+  nodematch("race") +
   nodematch("age.grp") +
   nodematch("role.class", diff = TRUE, levels = c(1, 2))
 
@@ -66,8 +70,9 @@ netstats_main <-
       nodefactor_race = nodefactor_race[-1],
       nodefactor_age.grp = nodefactor_age.grp[-1],
       nodefactor_degcasl = nodefactor_degcasl[-1],
+      degrange = 0,
       concurrent = concurrent,
-      nodematch_race.eth = nodematch_race.eth,
+      nodematch_race = nodematch_race,
       nodematch_age.grp = nodematch_age.grp,
       nodematch_ai.role = c(0, 0)
 ))
@@ -96,7 +101,7 @@ mcmc.diagnostics(netest_main$fit)
 dx_main <- netdx(
   netest_main,
   nsims = 10,
-  nsteps = 2000,
+  nsteps = 100,
   ncores = use_ncores,
   skip.dissolution = FALSE,
   nwstats.formula = main_formation_full
@@ -114,21 +119,23 @@ print(dx_main)
 
 casl_formation_full <-
   ~ edges +
-  nodefactor("race.eth", levels = NULL) +
+  nodefactor("race", levels = NULL) +
   nodefactor("age.grp", levels = NULL) +
   nodefactor("deg.main", levels = NULL) +
+  degrange(from = 6) +
   concurrent +
-  nodematch("race.eth", levels = NULL) +
+  nodematch("race", levels = NULL) +
   nodematch("age.grp") +
   nodematch("role.class", levels = c(1, 2))
 
 casl_formation <-
   ~ edges +
-  nodefactor("race.eth", levels = -1) +
-  nodefactor("age.grp", levels = -1) +
-  nodefactor("deg.main", levels = -1) +
+  nodefactor("race", levels = I(2:4)) +
+  nodefactor("age.grp", levels = I(2:5)) +
+  nodefactor("deg.main", levels = I(1:2)) +
+  degrange(from = 6) +
   concurrent +
-  nodematch("race.eth") +
+  nodematch("race") +
   nodematch("age.grp") +
   nodematch("role.class", diff = TRUE, levels = c(1, 2))
 
@@ -138,12 +145,12 @@ netstats_casl <-
       nodefactor_race = nodefactor_race[-1],
       nodefactor_age.grp = nodefactor_age.grp[-1],
       nodefactor_degmain = nodefactor_degmain[-1],
+      degrange = 0,
       concurrent = concurrent,
-      nodematch_race.eth = nodematch_race.eth,
+      nodematch_race = nodematch_race,
       nodematch_age.grp = nodematch_age.grp,
       nodematch_ai.role = c(0, 0)
 ))
-
 
 netstats_casl <- unname(netstats_casl)
 print(netstats_casl)
@@ -169,7 +176,7 @@ mcmc.diagnostics(netest_casl$fit)
 dx_casl <- netdx(
   netest_casl,
   nsims = 10,
-  nsteps = 2000,
+  nsteps = 100,
   ncores = use_ncores,
   skip.dissolution = FALSE,
   nwstats.formula = casl_formation_full
@@ -183,7 +190,7 @@ print(dx_casl)
 
 inst_formation_full <-
   ~ edges +
-  nodefactor("race.eth", levels = NULL) +
+  nodefactor("race", levels = NULL) +
   nodefactor("age.grp", levels = NULL) +
   nodefactor("deg.main", levels = NULL) +
   nodefactor("deg.casl", levels = NULL) +
@@ -191,10 +198,10 @@ inst_formation_full <-
 
 inst_formation <-
   ~ edges +
-  nodefactor("race.eth", levels = -1) +
-  nodefactor("age.grp", levels = -1) +
-  nodefactor("deg.main", levels = -1) +
-  nodefactor("deg.casl", levels = -1) +
+  nodefactor("race", levels = I(2:4)) +
+  nodefactor("age.grp", levels = I(2:5)) +
+  nodefactor("deg.main", levels = I(1:2)) +
+  nodefactor("deg.casl", levels = I(1:5)) +
   nodematch("role.class", diff = TRUE, levels = c(1, 2))
 
 netstats_inst <-
@@ -229,7 +236,7 @@ mcmc.diagnostics(netest_inst$fit)
 
 dx_inst <- netdx(
   netest_inst,
-  nsims = 10000,
+  nsims = 1000,
   ncores = use_ncores,
   skip.dissolution = FALSE,
   nwstats.formula = inst_formation_full,
