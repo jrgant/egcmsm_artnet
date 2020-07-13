@@ -314,34 +314,36 @@ anl[ptype == 3, .N, keyby = .(p_iai, p_iai_once)]
 anl[ptype == 3, .N, keyby = .(p_roi, p_roi_once)]
 anl[ptype == 3, .N, keyby = .(p_ioi, p_ioi_once)]
 
-# set partner subtype, main and casual partnerships
-anl[ptype %in% 1:2,
-    psubtype := dplyr::case_when(
-      (p_rai == 1 | p_iai == 1) & (p_roi == 1 | p_ioi == 1) ~ "oralanal",
-      (p_rai == 0 & p_iai == 0) & (p_roi == 1 | p_ioi == 1) ~ "oralonly",
-      (p_rai == 1 | p_iai == 1) & (p_roi == 0 & p_ioi == 0) ~ "analonly",
-      p_rai + p_iai + p_roi + p_ioi +
-        p_actsprefernot + p_actsdk == 0 ~ "nosex",
-      (p_rai + p_iai + p_roi + p_ioi == 0) &
-        (p_actsprefernot == 1 | p_actsdk == 1) ~ NA_character_,
-      TRUE ~ "999999"
-      )]
+## Consolidate RAI, IAI, ROI, and IOI variables, following what Sam & co.
+## did in the ARTnet data cleaning code.
+anl[is.na(p_rai) & !is.na(p_rai_once), p_rai := p_rai_once]
+anl[is.na(p_iai) & !is.na(p_iai_once), p_iai := p_iai_once]
+anl[is.na(p_roi) & !is.na(p_roi_once), p_roi := p_roi_once]
+anl[is.na(p_ioi) & !is.na(p_ioi_once), p_ioi := p_ioi_once]
 
-# set partner subtype, one-time contacts
-anl[ptype == 3,
+## Recheck
+anl[ptype == 3, .N, keyby = .(p_rai, p_rai_once)]
+anl[ptype == 3, .N, keyby = .(p_iai, p_iai_once)]
+anl[ptype == 3, .N, keyby = .(p_roi, p_roi_once)]
+anl[ptype == 3, .N, keyby = .(p_ioi, p_ioi_once)]
+
+
+## Create a partnership/contact subtype categorizing partners as:
+##  + oral-only
+##  + anal-only
+##  + oral-anal
+anl[,
     psubtype := dplyr::case_when(
-      (p_rai_once == 1 | p_iai_once == 1) &
-        (p_roi_once == 1 | p_ioi_once == 1) ~ "oralanal",
-      (p_rai_once == 0 & p_iai_once == 0) &
-        (p_roi_once == 1 | p_ioi_once == 1) ~ "oralonly",
-      (p_rai_once == 1 | p_iai_once == 1) &
-        (p_roi_once == 0 & p_ioi_once == 0) ~ "analonly",
-      p_rai_once + p_iai_once + p_roi_once + p_ioi_once +
-        p_actsprefernot_once + p_actsdk_once == 0 ~ "nosex",
-      (p_rai_once + p_iai_once + p_roi_once + p_ioi_once == 0) &
-        (p_actsprefernot_once == 1 | p_actsdk_once == 1) ~ NA_character_,
-      TRUE ~ NA_character_
-      )]
+    (p_rai == 1 | p_iai == 1) & (p_roi == 1 | p_ioi == 1) ~ "oralanal",
+    (p_rai == 0 & p_iai == 0) & (p_roi == 1 | p_ioi == 1) ~ "oralonly",
+    (p_rai == 1 | p_iai == 1) & (p_roi == 0 & p_ioi == 0) ~ "analonly",
+    p_rai + p_iai + p_roi + p_ioi +
+      p_actsprefernot + p_actsdk == 0 ~ "nosex",
+    (p_rai + p_iai + p_roi + p_ioi == 0) &
+      (p_actsprefernot == 1 | p_actsdk == 1 |
+         p_actsprefernot_once == 1 | p_actsdk_once == 1) ~ NA_character_,
+    TRUE ~ "999999")
+    ]
 
 # set ego sex roles, main and casual partnerships
 anl[ptype %in% 1:2, ":=" (
@@ -600,6 +602,11 @@ anl[ptype %in% 1:2, ":=" (
  ][, ":=" (
     recuai.prob = recuai.rate / recai.rate,
     insuai.prob = insuai.rate / insai.rate
+ )][]
+
+anl[ptype == 3, ":=" (
+  recuai.prob = p_recuai_once,
+  insuai.prob = p_insuai_once
 )][]
 
 # number of condom probabilities set to NA due to incompatible UAI response
@@ -630,8 +637,8 @@ anl[
 
 # add variables for yearly act rates
 anl[, ":="(
-  ai.rate.52 = ai.rate * 52,
-  oi.rate.52 = oi.rate * 52
+  ai.rate.52 = floor(ai.rate * 52),
+  oi.rate.52 = floor(oi.rate * 52)
 )]
 
 # calculate proportion of sex acts condom-protected (used as per-act prob.)
@@ -686,36 +693,75 @@ anl[ego.hiv != p_hiv2, hiv.concord := 3] # HIV serodiscordant
 anl[, .N, keyby = .(ego.hiv, p_hiv2, hiv.concord)]
 
 
-# %% ART AND PREP USE WITHIN PARTNERSHIPS --------------------------------------
+# %% ART AND PREP USE RECODING ------------------------------------------------
+
+## Respondent PrEP use
+##
+##   + Respondents were asked about current PrEP use only if they reported ever
+##     having taken PrEP.
+##
+##   + Respondents were asked about ever taking PrEP only if the reported
+##     being HIV-negative.
+
+anl[ego.hiv %in% c(1, 2), prep_revised := 0]
+anl[, .N, .(ego.hiv, prep_revised)]
+
+anl[prep_revised == 0, an_prep_current := 0]
+anl[, .N, .(prep_revised, an_prep_current)]
+
+## PrEP use skip patterns (within partnerships):
+##
+##   + Only HIV-NEGATIVE EGOS reported on their own PrEP use during a
+##     partnership (P_PREPUSE) or ever (PREP_REVISE). Set to 0.
+##
+##   + Only HIV-NEGATIVE or -UNKNOWN PARTNERS had information regarding their
+##     PrEP use during a partnership. Set to 0.
 
 ## Recode ego PrEP use within partnership as ever/never:
 ##   - If respondent reported never being on PrEP, set ego PrEP use within
 ##     partnership to "Never".
+
 anl[prep_revised == 0 | p_prepuse == 3, p_prepuse2 := 0]
-anl[p_prepuse %in% c(1, 2), p_prepuse2 := 1]  # any PrEP use in relationship
+anl[p_prepuse %in% c(1, 2), p_prepuse2 := 1]  # any PrEP use in partnership
+anl[ego.hiv %in% 1:2, p_prepuse2 := 0] # see skip pattern summary
 
 ## Recode partner PrEP use within partnership as ever/never.
 anl[p_prepuse_part %in% c(1, 2), p_prepuse_part2 := 1]
-anl[p_prepuse_part == 3, p_prepuse_part2 := 0]
+anl[p_prepuse_part == 3, p_prepuse_part2 := 0] # any PrEP use in partnership
+anl[p_hiv2 == 1, p_prepuse_part2 := 0]  # see skip pattern summary
 
 anl[, .N, keyby = p_prepuse]
 anl[, .N, keyby = p_prepuse_part]
 
+## ART use skip patterns (within partnerships):
+##
+##   + Only HIV-POSITIVE EGOS reported their own ART use during a partnership.
+##
+##   + Only HIV-POSITIVE PARTNERS had information regarding their ART use during
+##     a partnership.
+##
+
 ## Recode ego ART use within partnership as ever/never.
-anl[ego.hiv == 1, p_artuse_bin := ifelse(
-  p_artuse %in% 1:2, 1, p_artuse
-)]
+anl[
+  ego.hiv == 1,
+  p_artuse_bin := ifelse(
+    p_artuse %in% 1:2, 1, p_artuse
+  )]
 
 anl[p_artuse_bin == 3, p_artuse_bin := 0]
+anl[ego.hiv %in% c(0, 2), p_artuse_bin := 0] # See skip pattern summary.
 
 anl[, .N, keyby = .(p_artuse, p_artuse_bin)]
 
 ## Recode partner ART use within partnership as ever/never.
-anl[p_hiv2 == 1, p_artuse_part_bin := ifelse(
-  p_artuse_part %in% 1:2, 1, p_artuse_part
-)]
+anl[
+  p_hiv2 == 1,
+  p_artuse_part_bin := ifelse(
+    p_artuse_part %in% 1:2, 1, p_artuse_part
+  )]
 
 anl[p_artuse_part_bin == 3, p_artuse_part_bin := 0]
+anl[p_hiv2 %in% c(0, 2), p_artuse_part_bin := 0] # See skip pattern summary.
 
 anl[, .N, keyby = .(p_artuse_part, p_artuse_part_bin)]
 
