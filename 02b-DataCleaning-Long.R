@@ -361,11 +361,13 @@ anl[ptype %in% 1:2, ":=" (
     )
 )]
 
-anl[ptype %in% 1:2, .(
-    id, pid, ptype, psubtype,
-    p_rai, p_iai, p_roi, p_ioi,
-    ego.anal.role, ego.oral.role
-  )]
+anl[, .N, keyby = .(ptype, ego.anal.role, p_rai, p_iai)]
+
+anl[, .(
+  id, pid, ptype, psubtype,
+  p_rai, p_iai, p_roi, p_ioi,
+  ego.anal.role, ego.oral.role
+)]
 
 sc <- names(anl)[grepl("once", names(anl))][2:7]
 anl[, table(ptype, psubtype, exclude = NULL)]
@@ -521,7 +523,7 @@ anl[ptype == 3, durat_wks := 0]
 class(anl$durat_days)
 class(anl$durat_wks)
 
-anl[ptype %in% 1:2, .(
+anl[, .(
   id, pid,
   ptype, ego.race.cat, ego.age.grp,
   p_startyyyy, p_startmm, p_startdt, sub_date,
