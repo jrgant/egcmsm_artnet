@@ -27,6 +27,10 @@ anl <- fread(paste0(Sys.getenv("ARTNET_PATH"), "/artnet-long-cleaned.csv"))
 # default ggplot theme
 theme_set(theme_base())
 
+## NOTE:
+## I am using a slightly modified version of the mice() package that I altered
+## in order to be able to use a function from the miceadds package in
+## parlmice(). Without this change, the clusters could not see miceadds at all.
 
 ################################################################################
                            ## SET UP EGO DATA SET ##
@@ -34,6 +38,10 @@ theme_set(theme_base())
 
 ansub <- copy(an)
 ansub <- ansub[, .(id, cuml.pnum, prep_revised)]
+
+## Fix NA coding
+anl[ego.anal.role == "", ego.anal.role := NA]
+anl[p_race.cat == "", p_race.cat := NA]
 
 
 ################################################################################
@@ -44,10 +52,6 @@ ansub <- ansub[, .(id, cuml.pnum, prep_revised)]
 anl[, ego.anal.role := as.factor(ego.anal.role)]
 anl[, ego.race.cat := as.factor(ego.race.cat)]
 anl[, p_race.cat := as.factor(p_race.cat)]
-
-## Fix NA coding
-anl[ego.anal.role == "", ego.anal.role := NA]
-anl[mc_ong[p_race.cat == "", p_race.cat := NA]
 
 
 ################################################################################
@@ -64,87 +68,60 @@ anlsub <- copy(anl)
 
 anlsub <- anlsub[, .(
   id, pid, pid_unique,
-  ego.race.cat, ego.age, ego.hiv, ego.ongoing, ego.anal.role,
-  p_race.cat, p_age_i1 = p_age_imputed, p_hiv2, p_ongoing_ind,
-  durat_wks, ptype, ai.rate, oi.rate, cond.prob,
-  p_prepuse, p_prepuse_part, p_artuse, p_artuse_part
+  ego.race.cat, ego.age, ego.hiv, ego.anal.role,
+  p_race.cat, p_age_i1 = p_age_imputed, abs_sqrt_agediff,
+  p_hiv2, p_ongoing_ind, durat_wks, ptype,
+  cond.prob, p_rai, p_iai, p_roi, p_ioi,
+  p_prepuse = p_prepuse2, p_prepuse_part = p_prepuse_part2,
+  oi.rate.52, ai.rate.52,
+  p_artuse_bin, p_artuse_part_bin
 )]
 
-# create main/casual partnership data set and merge in level 2 (ego) variables
-mc_ong <- ansub[anlsub[ptype != 3 & p_ongoing_ind == 1], on = "id"]
+## Merge selected ego-level variables with the subset of the partnership
+## dataset.
+mcong_otp <- ansub[
+  anlsub[
+  (ptype %in% 1:2 & p_ongoing_ind == 1) | ptype == 3],
+  on = "id"
+]
 
-dropcols <- c("ego.ongoing", "p_ongoing_ind")
-mc_ong <- mc_ong[, (dropcols) := NULL]
-mc_ong
+mcong_otp[, p_ongoing_ind := NULL]
 
-md.pattern(mc_ong, rotate.names = TRUE)
-ncc(mc_ong)
-nic(mc_ong)
-
-mc_ong[, ai.rate.52 := floor(ai.rate * 52)]
-mc_ong[, oi.rate.52 := floor(oi.rate * 52)]
-
-## View and update PrEP use within partnership
-mc_ong[, .N, keyby = p_prepuse]
-mc_ong[, .N, keyby = p_prepuse_part]
-
-## RECODE EGO PREP USE
-
-## If respondent reported never being on PrEP, set ego PrEP use within
-## partnership to "Never".
-mc_ong[prep_revised == 0 | p_prepuse == 3, p_prepuse := 0]
-mc_ong[p_prepuse %in% c(1, 2), p_prepuse := 1]  # any PrEP use in relationship
-
-## RECODE ALTER PREP USE
-mc_ong[p_prepuse_part %in% c(1, 2), p_prepuse_part := 1]
-mc_ong[p_prepuse_part == 3, p_prepuse_part := 0]
-
-mc_ong[, .N, keyby = p_prepuse]
-mc_ong[, .N, keyby = p_prepuse_part]
-
-## RECODE EGO ART USE
-mc_ong[, .N, .(ego.hiv, p_artuse)]
-
-## any ego ART use with given partner
-mc_ong[ego.hiv == 1, p_artuse_bin := ifelse(
-  p_artuse %in% 1:2, 1, p_artuse
-)]
-
-mc_ong[p_artuse_bin == 3, p_artuse_bin := 0]
-
-mc_ong[, .N, keyby = .(p_artuse, p_artuse_bin)]
-
-## RECODE ALTER ART USE
-mc_ong[, .N, keyby = .(p_artuse_part, p_hiv2)]
-
-mc_ong[p_hiv2 == 1, p_artuse_part_bin := ifelse(
-  p_artuse_part %in% 1:2, 1, p_artuse_part
-)]
-
-mc_ong[p_artuse_part_bin == 3, p_artuse_part_bin := 0]
-
-mc_ong[, .N, keyby = .(p_artuse_part, p_artuse_part_bin)]
-
-mc_ong[, c("p_artuse", "p_artuse_part") := NULL]
-
-## CALCULATE DIFFERENCE IN AGE SQUARE ROOT DIFFERENCES
-mc_ong[, abs_sqrt_agediff := abs(sqrt(ego.age) - sqrt(p_age_i1))]
-
-weekly_rates <- c("ai.rate", "oi.rate")
-mc_ong[, (weekly_rates) := NULL]
-
-mc_ong[, .N, keyby = ego.hiv]
-mc_ong[, .N, keyby = p_hiv2]
-
-sapply(mc_ong, class)
+str(mcong_otp)
 
 
 ################################################################################
                           ## MISSING DATA SUMMARIES ##
 ################################################################################
 
-## Calculate proportion of missing data for each variable
-## Unit of analysis, sexual partnerships
+dropfromviz <- c("id", "pid", "pid_unique")
+dropformc <- c(dropfromviz, paste0("p_", c("rai", "iai", "roi", "ioi")))
+dropforotp <- c(dropfromviz, "ai.rate.52", "oi.rate.52")
+
+## Main/casual pratnerships
+md.pattern(mcong_otp[ptype %in% 1:2, -..dropformc], rotate.names = TRUE)
+misscount <- sapply(
+  mcong_otp[ptype %in% 1:2, -..dropformc],
+  function(x) sum(is.na(x))
+)
+misscount
+round(misscount / mcong_otp[ptype %in% 1:2, .N], 3)
+
+## One-time partnerships
+md.pattern(mcong_otp[ptype == 3, -..dropforotp], rotate.names = TRUE)
+misscount_otp <- sapply(
+  mcong_otp[ptype == 3, -..dropforotp],
+  function(x) sum(is.na(x))
+)
+misscount_otp
+round(misscount_otp / mcong_otp[ptype == 3, .N], 3)
+
+## Few complete cases exist, partly due to complex skip patterns.
+ncc(mcong_otp)
+nic(mcong_otp)
+
+## Calculate proportion of missing data for each variable.
+## Unit of analysis: sexual partnerships
 missing_summary <- function(data, pship_type) {
   s <- match(
     x = pship_type,
@@ -159,19 +136,20 @@ missing_summary <- function(data, pship_type) {
   }) %>% rbindlist(idcol = "var")
 }
 
-missing_summary(mc_ong, "main")
-missing_summary(mc_ong, "casual")
+missing_summary(mcong_otp, "main")
+missing_summary(mcong_otp, "casual")
+missing_summary(mcong_otp, "onetime")
 
-mdp.main <- md.pattern(mc_ong[ptype == 1], plot = FALSE)
-mdp.casl <- md.pattern(mc_ong[ptype == 2], plot = FALSE)
+mdp.main <- md.pattern(mcong_otp[ptype == 1], plot = FALSE)
+mdp.casl <- md.pattern(mcong_otp[ptype == 2], plot = FALSE)
 
 mdp.main.cnt <- as.numeric(rownames(mdp.main))
 mdp.casl.cnt <- as.numeric(rownames(mdp.casl))
 
 # Check if sum of missingness pattern counts equals number of partnerships.
 # Should return TRUE.
-sum(mdp.main.cnt, na.rm = TRUE) == nrow(mc_ong[ptype == 1])
-sum(mdp.casl.cnt, na.rm = TRUE) == nrow(mc_ong[ptype == 2])
+sum(mdp.main.cnt, na.rm = TRUE) == nrow(mcong_otp[ptype == 1])
+sum(mdp.casl.cnt, na.rm = TRUE) == nrow(mcong_otp[ptype == 2])
 
 anymiss_main <- 1 - (mdp.main.cnt[1] / sum(mdp.main.cnt, na.rm = TRUE))
 anymiss_casl <- 1 - (mdp.casl.cnt[1] / sum(mdp.casl.cnt, na.rm = TRUE))
@@ -181,7 +159,7 @@ round(anymiss_casl * 100, 2)
 
 
 ################################################################################
-                           ## IMPUTE MISSING DATA ##
+                          ## BASE IMPUTATION SETUP ##
 ################################################################################
 
 ## NOTE:
@@ -198,18 +176,18 @@ round(anymiss_casl * 100, 2)
 
 ## FLUX CHECK ------------------------------------------------------------------
 
-ncc(mc_ong) # no complete cases register, due to complex skip patterns
-
 anflux <- copy(an)
 anflux <- anflux[, grep("part|m_|age|race", names(an)) := NULL]
 round(sapply(anflux, function(x) sum(is.na(x))) / nrow(anflux), 3)
 
-anflux_ong <- anflux[mc_ong, on = "id"]
+anflux_ong <- anflux[mcong_otp, on = "id"]
 anflux_ong[, grep("^i\\.", names(anflux_ong)) := NULL]  # drop duplicated vars
 anflux_ong
 names(anflux_ong)
 
-as.data.table(flux(anflux_ong), keep.rownames = TRUE)[order(outflux)]
+as.data.table(
+  flux(anflux_ong), keep.rownames = TRUE
+)[order(outflux), .(rn, pobs, outflux)]
 
 ## Select ego-level (i.e., level-2) variables with high outflux to use in
 ## imputation models. However, STITEST_PERWEEK is also one of the outcomes
@@ -224,30 +202,30 @@ check_flux
 
 sapply(check_flux, function(x) sum(is.na(x))) / nrow(check_flux)
 
-## Reassign mc_ong with additional variables
+## Reassign mcong_otp with additional variables
 droplevel1 <- setdiff(names(anflux), names(check_flux))
 droplevel1
 
-mc_ong <- copy(anflux_ong)
-mc_ong[, c(droplevel1) := NULL]
+mcong_otp <- copy(anflux_ong)
+mcong_otp[, c(droplevel1) := NULL]
 
-names(mc_ong)
+names(mcong_otp)
 
 
 ## SPECIFY PREDICTOR VARIABLES -------------------------------------------------
 
-pred <- make.predictorMatrix(mc_ong)
+pred <- make.predictorMatrix(mcong_otp)
 
 completevars <- c(
   "id", "pid", "pid_unique",
   "ego.race.cat", "ego.age", "ego.hiv",
-  "p_hiv2", "ptype"
+  "p_hiv2", "ptype", "cuml.pnum"
 )
 
-## Don't impute complete variables
+## Don't impute complete variables.
 pred[completevars, ] <- 0
 
-## Don't impute using ID variables
+## Don't impute using ID variables.
 pred[, c("id", "pid", "pid_unique")] <- 0
 
 ## Identify respondent ID (mice will treat as class/cluster ID)
@@ -256,12 +234,28 @@ pred[, "id"] <- -2
 ## Use passive imputation only for abs_sqrt_agediff
 pred["abs_sqrt_agediff", ] <- 0
 
-pred
+## Don't use variables that are related determinstically due to skip patterns.
+pred["prep_revised", c("ego.hiv", "prep_revised", "p_artuse_bin")] <- 0
+pred["an_prep_current", c("prep_revised", "ego.hiv", "p_artuse_bin")] <- 0
+pred["p_prepuse", c("prep_revised", "an_prep_current", "ego.hiv")] <- 0
+pred["p_prepuse_part", "p_hiv2"] <- 0
+pred["p_artuse_bin", c("prep_revised", "an_prep_current", "ego.hiv")] <- 0
+pred["p_artuse_part_bin", "p_hiv2"] <- 0
 
+
+## Prevent ptype-specific variables from imputing outside of relevant ptype.
+## For instance, in main and casual partnerships, we want to impute ai.rate.52
+## and oi.rate.52 only. For one-time partnerships, we don't want or need these
+## rates and are interested in p_rai, p_iai, p_roi, and p_ioi only (indicators)
+## of which sex acts took place during the encounter).
+sexact.ind <- c("p_rai", "p_iai", "p_roi", "p_ioi")
+rate.vars <- c("ai.rate.52", "oi.rate.52")
+
+pred
 
 ## SPECIFY IMPUTATION METHODS --------------------------------------------------
 
-meth <- make.method(mc_ong)
+meth <- make.method(mcong_otp)
 length(meth)
 
 ## Level 1 variables to impute
@@ -275,13 +269,14 @@ l1_bin <- c(
   "p_prepuse",
   "p_prepuse_part",
   "p_artuse_bin",
-  "p_artuse_part_bin"
+  "p_artuse_part_bin",
+  sexact.ind
 )
 
 l1_count <- c(
+  "cond.prob",
   "p_age_i1",
   "durat_wks",
-  "cond.prob",
   "ai.rate.52",
   "oi.rate.52"
 )
@@ -292,35 +287,93 @@ l2 <- c(
   "prep_revised",
   "stitest_perweek",
   "pnua_12m",
-  "cuml.pnum",
   "mmconc"
 )
 
 ## Methods
-meth["abs_sqrt_agediff"] <- "~I(abs(sqrt(ego.age) - sqrt(p_age_i1)))"
+meth["abs_sqrt_agediff"] <- "~ I(abs(sqrt(ego.age) - sqrt(p_age_i1)))"
 meth[c(l1_cat, l1_count)] <- "2l.pmm"
 meth[l1_bin] <- "2l.bin"
 meth[l2] <- "2lonly.pmm"
 
 meth
 
-sapply(mc_ong, class)
+sapply(mcong_otp, class)
 
-# initialize a mice object
-ini <- mice(
-  mc_ong,
+## Fix classes for a couple of variables.
+fixclass <- c("p_hiv2", "ego.hiv")
+mcong_otp[, (fixclass) := lapply(.SD, as.factor), .SDcols = fixclass]
+mcong_otp[, oi.rate.52 := as.integer(oi.rate.52)]
+
+## NOTE: The conversion of oi.rate.52 above throws a warning about introducing
+##       missing values. Values appear to match their originals,
+##       so considering this warning to be benign.
+
+
+################################################################################
+                ## SPLIT IMPUTATION TASKS BY PARTNERSHIP TYPE ##
+################################################################################
+
+## Make two subsets of the data, predictors, and methods for imputing values by
+## partnerships type. Main/casual in one group and one-time contacts in the
+## other.
+
+
+# MAIN/CASUAL PARTNERSHIPS -----------------------------------------------------
+
+mcong <- mcong_otp[ptype %in% 1:2][, (sexact.ind) := NULL]
+
+predmc <- pred[
+  -grep(paste0(sexact.ind, collapse = "|"), rownames(pred)),
+  -grep(paste0(sexact.ind, collapse = "|"), colnames(pred))
+  ]
+
+methmc <- meth[!names(meth) %in% sexact.ind]
+
+## Initialize the main/casual MICE object.
+inimc <- mice(
+  mcong,
   maxit = 0,
-  predictorMatrix = pred,
-  methods = meth
+  predictorMatrix = predmc,
+  method = methmc
 )
 
-## Alter visit sequence so that abs_sqrt_agediff is passively
-## imputed right after p_age_i1 is imputed.
-vis <- ini$visitSequence
-vis <- c(vis[1:15], vis[26], vis[16:25])
-vis
+## Check visit sequence to make sure that abs_sqrt_agediff is passively imputed
+## right after p_age_i1 is imputed. The variable subsetting conducted at the
+## beginning of this script ordered these variables intentionally.
+vismc <- inimc$visitSequence
+vismc
 
-## POST-PROCESSING -------------------------------------------------------------
+
+# ONE-TIME CONTACTS -----------------------------------------------------------
+
+dropfromotp <- c(rate.vars, "ego.anal.role", "durat_wks", "ptype")
+
+otp <- mcong_otp[ptype == 3][, (dropfromotp) := NULL]
+
+predotp <- pred[
+  -grep(paste0(dropfromotp, collapse = "|"), rownames(pred)),
+  -grep(paste0(dropfromotp, collapse = "|"), colnames(pred))
+]
+
+methotp <- meth[!names(meth) %in% dropfromotp]
+
+iniotp <- mice(
+  otp,
+  maxit = 0,
+  predictorMatrix = predotp,
+  method = methotp
+)
+
+## Check visit sequence to make sure that abs_sqrt_agediff is passively imputed
+## right after p_age_i1 is imputed. The variable subsetting conducted at the
+## beginning of this script ordered these variables intentionally.
+visotp <- iniotp$visitSequence
+visotp
+
+################################################################################
+                 ## POST-PROCESSING (ALL PARTNERSHIP TYPES) ##
+################################################################################
 
 ## Post-process PrEP and ART use variables to avoid violating skip patterns
 ## enforced in the ARTnet questionnaire.
@@ -342,33 +395,55 @@ vis
 ##   + Only HIV-POSITIVE PARTNERS had information regarding their ART use during
 ##     a partnership.
 ##
+## Ever PrEP use:
+##
+##   + Respondents were asked about ever taking PrEP only if they reported
+##     being HIV-negative.
+##
 ## Current PrEP use:
 ##
 ##   + Respondents were asked about current PrEP use only if they reported ever
 ##     having taken PrEP.
 
-post <- ini$post
+postmc <- inimc$post
+postotp <- iniotp$post
 
-post["p_prepuse"] <-
-  "imp[[j]][data$ego.hiv[!r[, j]] %in% 1:2, i] <- 0"
+## Formulas.
+post_p_prepuse <- "imp[[j]][data$prep_revised[!r[, j]] != 1, i] <- 0"
+post_p_artuse_bin <- "imp[[j]][data$ego.hiv[!r[, j]] %in% c(0, 2), i] <- 0"
 
-post["p_artuse_bin"] <-
-  "imp[[j]][data$ego.hiv[!r[, j]] %in% c(0, 2), i] <- 0"
+post_p_prepuse_part <- "imp[[j]][data$p_hiv2[!r[, j]] == 1, i] <- 0"
+post_p_artuse_part_bin <- "imp[[j]][data$p_hiv2[!r[, j]] %in% c(0, 2), i] <- 0"
 
-post["p_prepuse_part"] <-
-  "imp[[j]][data$p_hiv2[!r[, j]] == 1, i] <- 0"
+post_prep_revised <- "imp[[j]][data$ego.hiv[!r[, j]] == 1, i] <- 0"
+post_an_prep_current <- "imp[[j]][data$prep_revised[!r[, j]] == 0, i] <- 0"
 
-post["p_artuse_part_bin"] <-
-  "imp[[j]][data$p_hiv2[!r[, j]] %in% c(0, 2), i] <- 0"
+## Assignment.
+postmc["p_prepuse"] <- post_p_prepuse
+postotp["p_prepuse"] <- post_p_prepuse
 
-post["an_prep_current"] <-
-  "imp[[j]][data$prep_revised[!r[, j]] == 0, i] <- 0"
+postmc["p_artuse_bin"] <- post_p_artuse_bin
+postotp["p_artuse_bin"] <- post_p_artuse_bin
 
-post["prep_revised"] <-
-  "imp[[j]][data$ego.hiv[!r[, j]] == 1, i] <- 0"
+postmc["p_prepuse_part"] <- post_p_prepuse_part
+postotp["p_prepuse_part"] <- post_p_prepuse_part
+
+postmc["p_artuse_part_bin"] <- post_p_artuse_part_bin
+postotp["p_artuse_part_bin"] <- post_p_artuse_part_bin
+
+postmc["prep_revised"] <- post_prep_revised
+postotp["prep_revised"] <- post_prep_revised
+
+postmc["an_prep_current"] <- post_an_prep_current
+postotp["an_prep_current"] <- post_an_prep_current
+
+postmc
+postotp
 
 
-## IMPUTE ----------------------------------------------------------------------
+################################################################################
+                     ## IMPUTE MAIN/CASUAL PARTNERSHIPS ##
+################################################################################
 
 ## NOTE: Donor pool size selected based on:
 
@@ -376,68 +451,100 @@ post["prep_revised"] <-
 ##       predictive mean matching and local residual draws. BMC Med. Res.
 ##       Methodol. 2014;14:75. http://dx.doi.org/10.1186/1471-2288-14-75
 
-imp <- parlmice(
-  mc_ong,
-  maxit = 50,
+## Make sure lengths are all equal. Should return TRUE.
+all.equal(
+  length(names(mcong)),
+  length(colnames(predmc)),
+  length(methmc),
+  length(vismc),
+  length(postmc),
+  tolerance = 0
+)
+
+check.varlist <- as.data.table(cbind(
+  sort(names(mcong)),
+  sort(colnames(predmc)),
+  sort(names(methmc)),
+  sort(vismc),
+  sort(names(postmc))
+))
+
+check.varlist[, .N, names(check.varlist)][, check := N == 1][]
+
+# FIXME
+# Getting the "glmer does not run" error messages.
+# See org TODO about this issue.
+
+imp_mc <- parlmice(
+  mcong,
+  maxit = 100,
   n.core = 5,
-  n.imp.core = 4,
-  predictorMatrix = pred,
-  method = meth,
-  visitSequence = vis,
-  post = post,
+  m = 4,
+  predictorMatrix = predmc,
+  method = methmc,
+  visitSequence = vismc,
+  post = postmc,
   cluster.seed = 45345,
   donors = 10L,
+  # printFlag = TRUE,
   cl.loads = TRUE
 )
 
-## Imputation models kick out some variables with perfect prediction due to
-## skip patterns. Dealt with via post-processing above.
-imp$loggedEvents
+imp_mc$loggedEvents
 
 
 ################################################################################
-                           ## DIAGNOSE IMPUTATIONS ##
+                      ## WRITE MAIN/CASUAL IMPUTATIONS ##
+################################################################################
+saveRDS(imp_mc, file.path(Sys.getenv("ARTNET_PATH"), "artnet-imputed-mc.Rds"))
+
+
+################################################################################
+                     ## DIAGNOSE MAIN/CASUAL IMPUTATIONS ##
 ################################################################################
 
+imp_mc <- readRDS(
+  file.path(Sys.getenv("ARTNET_PATH"), "artnet-imputed-mc.Rds")
+)
 
 ## Check for impossible combinations (violations of skip patterns from ARTnet)
-cimp <- as.data.table(complete(imp, "long"))
+cimp_mc <- as.data.table(complete(imp_mc, "long"))
 
 ### PrEP, ego
-mc_ong[, .N, keyby = .(ego.hiv, prep_revised)]   # original data
-cimp[, .N, keyby = .(ego.hiv, prep_revised)]     # imputed data
+mcong[, .N, keyby = .(ego.hiv, prep_revised)]   # original data
+cimp_mc[, .N, keyby = .(ego.hiv, prep_revised)]     # imp_mcuted data
 
-mc_ong[, .N, keyby = .(ego.hiv, p_prepuse)]      # original data
-cimp[, .N, keyby = .(ego.hiv, p_prepuse)]        # imputed data
+mcong[, .N, keyby = .(ego.hiv, p_prepuse)]      # original data
+cimp_mc[, .N, keyby = .(ego.hiv, p_prepuse)]        # imp_mcuted data
 
-mc_ong[, .N, keyby = .(an_prep_current, prep_revised)]  # original data
-cimp[, .N, keyby = .(an_prep_current, prep_revised)]    # imputed data
+mcong[, .N, keyby = .(an_prep_current, prep_revised)]  # original data
+cimp_mc[, .N, keyby = .(an_prep_current, prep_revised)]    # imp_mcuted data
 
 
 ### PrEP, alter
-mc_ong[, .N, keyby = .(p_hiv2, p_prepuse_part)]  # original data
-cimp[, .N, keyby = .(p_hiv2, p_prepuse_part)]    # imputed data
+mcong[, .N, keyby = .(p_hiv2, p_prepuse_part)]  # original data
+cimp_mc[, .N, keyby = .(p_hiv2, p_prepuse_part)]    # imp_mcuted data
 
 ### ART, ego
-mc_ong[, .N, keyby = .(ego.hiv, p_artuse_bin)]      # original data
-cimp[, .N, keyby = .(ego.hiv, p_artuse_bin)]        # imputed data
+mcong[, .N, keyby = .(ego.hiv, p_artuse_bin)]      # original data
+cimp_mc[, .N, keyby = .(ego.hiv, p_artuse_bin)]        # imp_mcuted data
 
 ### ART, alter
-mc_ong[, .N, keyby = .(p_hiv2, p_artuse_part_bin)]  # original data
-cimp[, .N, keyby = .(p_hiv2, p_artuse_part_bin)]    # imputed data
+mcong[, .N, keyby = .(p_hiv2, p_artuse_part_bin)]  # original data
+cimp_mc[, .N, keyby = .(p_hiv2, p_artuse_part_bin)]    # imp_mcuted data
 
 
-impdx_dir <- "imputation_diagnostics"
+imp_dx_dir <- "imputation_diagnostics"
 
 ### Trace plots
-pdf(file.path(impdx_dir, "imp_trace.pdf"), onefile = TRUE)
-plot(imp)
+pdf(file.path(imp_dx_dir, paste0("imp_mc_trace_", Sys.Date(), ".pdf")), onefile = TRUE)
+plot(imp_mc)
 dev.off()
 
 ### Density plots
-pdf(file.path(impdx_dir, "imp_density.pdf"), onefile = TRUE)
+pdf(file.path(imp_dx_dir, paste0("imp_mc_density_", Sys.Date(), ".pdf")), onefile = TRUE)
 densityplot(
-  imp,
+  imp_mc,
   thicker = 3,
   scales = list(
     x = list(relation = "free"),
@@ -447,16 +554,120 @@ densityplot(
 dev.off()
 
 ### closer look at oral and anal act rates
-pdf(file.path(impdx_dir, "imp_density_actrates-only.pdf"))
-densityplot(imp, ~ oi.rate.52 + ai.rate.52)
+## pdf(file.path(imp_mcdx_dir, "imp_mc_density_actrates-only.pdf"))
+## densityplot(imp_mc, ~ oi.rate.52 + ai.rate.52)
+## dev.off()
+
+
+################################################################################
+                       ## IMPUTE ONE-TIME PARTNERSHIPS ##
+################################################################################
+
+
+## Make sure lengths are all equal. Should return TRUE.
+all.equal(
+  length(names(otp)),
+  length(colnames(predotp)),
+  length(methotp),
+  length(visotp),
+  length(postotp),
+  tolerance = 0
+)
+
+check.varlist.otp <- as.data.table(cbind(
+  sort(names(otp)),
+  sort(colnames(predotp)),
+  sort(names(methotp)),
+  sort(visotp),
+  sort(names(postotp))
+))
+
+check.varlist.otp[, .N, names(check.varlist.otp)][, check := N == 1][]
+
+# FIXME
+# Getting the "glmer does not run" error messages.
+# See org TODO about this issue.
+
+imp_otp <- parlmice(
+  otp,
+  maxit = 50,
+  n.core = 5,
+  m = 4,
+  predictorMatrix = predotp,
+  method = methotp,
+  visitSequence = visotp,
+  post = postotp,
+  cluster.seed = 45345,
+  donors = 10L,
+  # printFlag = TRUE,
+  cl.loads = TRUE
+)
+
+imp_otp$loggedEvents
+
+
+################################################################################
+                   ## WRITE ONE-TIME CONTACTS IMPUTATIONS ##
+################################################################################
+saveRDS(imp_otp, file.path(Sys.getenv("ARTNET_PATH"), "artnet-imputed-otp.Rds"))
+
+
+################################################################################
+                     ## DIAGNOSE MAIN/CASUAL IMPUTATIONS ##
+################################################################################
+
+imp_otp <- readRDS(
+  file.path(Sys.getenv("ARTNET_PATH"), "artnet-imputed-otp.Rds")
+)
+
+## Check for impossible combinations (violations of skip patterns from ARTnet)
+cimp_otp <- as.data.table(complete(imp_otp, "long"))
+
+### PrEP, ego
+otp[, .N, keyby = .(ego.hiv, prep_revised)]       # original data
+cimp_otp[, .N, keyby = .(ego.hiv, prep_revised)]  # imp_otputed data
+
+otp[, .N, keyby = .(ego.hiv, p_prepuse)]          # original data
+cimp_otp[, .N, keyby = .(ego.hiv, p_prepuse)]     # imp_otputed data
+
+otp[, .N, keyby = .(an_prep_current, prep_revised)]       # original data
+cimp_otp[, .N, keyby = .(an_prep_current, prep_revised)]  # imp_otputed data
+
+### PrEP, alter
+otp[, .N, keyby = .(p_hiv2, p_prepuse_part)]       # original data
+cimp_otp[, .N, keyby = .(p_hiv2, p_prepuse_part)]  # imp_otputed data
+
+### ART, ego
+otp[, .N, keyby = .(ego.hiv, p_artuse_bin)]        # original data
+cimp_otp[, .N, keyby = .(ego.hiv, p_artuse_bin)]   # imp_otputed data
+
+### ART, alter
+otp[, .N, keyby = .(p_hiv2, p_artuse_part_bin)]       # original data
+cimp_otp[, .N, keyby = .(p_hiv2, p_artuse_part_bin)]  # imp_otputed data
+
+imp_dx_dir <- "imputation_diagnostics"
+
+### Trace plots
+pdf(file.path(imp_dx_dir, paste0("imp_otp_trace_", Sys.Date(), ".pdf")), onefile = TRUE)
+plot(imp_otp)
 dev.off()
 
+### Density plots
+pdf(file.path(imp_dx_dir, paste0("imp_otp_density_", Sys.Date(), ".pdf")), onefile = TRUE)
+densityplot(
+  imp_otp,
+  thicker = 3,
+  scales = list(
+    x = list(relation = "free"),
+    y = list(relation = "free")
+  )
+)
+dev.off()
 
-################################################################################
-                                  ## WRITE ##
-################################################################################
-
-saveRDS(imp, file.path(Sys.getenv("ARTNET_PATH"), "artnet-maincas-imputed.Rds"))
+### closer look at oral and anal act rates
+## pdf(file.path(imp_otpdx_dir, "imp_otp_density_actrates-only.pdf"))
+## densityplot(imp_otp, ~ oi.rate.52 + ai.rate.52)
+## dev.off()
 
 
 ################################################################################
@@ -500,7 +711,7 @@ test.ai.cc <- glm.nb(
     ptype + ego.race.cat +
     p_race.cat + ego.age +
     p_age_i1 + abs_sqrt_agediff,
-  data = mc_ong
+  data = mcong_otp
 )
 
 pool(with(imp2, lm(p_age_i1 ~ 1))) # quick test to get pooled means with standard errors
