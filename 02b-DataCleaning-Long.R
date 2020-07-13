@@ -396,12 +396,12 @@ anl[, .N, .(id)][, summary(N)]
 
 # %% IMPUTE PARTNER AGE (FIRST PASS BASED ON RELAGE RESPONSE) ------------------
 
-## Source for age imputation:
+## NOTE: Source for age imputation:
 ## Weiss KM, Goodreau SM, Morris M, Prasad P, Ramaraju R, Sanchez T, et al.
 ## Egocentric Sexual Networks of Men Who Have Sex with Men in the United States:
 ## Results from the ARTnet Study. medRxiv. 2019. doi:10.1101/19010579
 
-## @NOTE:
+## NOTE:
 ## - I used a different method to impute these values than in the Weiss paper
 
 plot(density(anl$p_age, na.rm = T))
@@ -574,19 +574,20 @@ anl[ptype %in% 1:2, .N, keyby = p_unitiai_fix]
 anl[ptype %in% 1:2, .N, keyby = p_unitroi_fix]
 anl[ptype %in% 1:2, .N, keyby = p_unitioi_fix]
 
-# set units that equal 0 to 0.5 to avoid infinite values in rate calculations
-
+## Set units that equal 0 to 0.5 to avoid infinite values in rate calculations.
 anl[ptype %in% 1:2 & p_rai == 1 & p_unitrai_fix == 0, p_unitrai_fix := 0.5]
 anl[ptype %in% 1:2 & p_iai == 1 & p_unitiai_fix == 0, p_unitiai_fix := 0.5]
 anl[ptype %in% 1:2 & p_roi == 1 & p_unitroi_fix == 0, p_unitroi_fix := 0.5]
-# p_unitioi_fix had no 0 time units
+# NOTE: p_unitioi_fix had no 0 time units
 
 anl[ptype %in% 1:2 & p_rai == 1, summary(p_unitrai_fix)]
 anl[ptype %in% 1:2 & p_iai == 1, summary(p_unitiai_fix)]
 anl[ptype %in% 1:2 & p_roi == 1, summary(p_unitroi_fix)]
 anl[ptype %in% 1:2 & p_ioi == 1, summary(p_unitioi_fix)]
 
-# calculate act rates within partnerships
+## Calculate act rates within main and casual partnerships. After we translate
+## the overall and unprotected act rates to the weekly scale, we use that
+## rate ratio as the per-act probability of condomless sex.
 anl[ptype %in% 1:2, ":=" (
   recai.rate = p_recai / p_unitrai_fix,
   insai.rate = p_insai / p_unitiai_fix,
