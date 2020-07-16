@@ -253,6 +253,81 @@ rate.vars <- c("ai.rate.52", "oi.rate.52")
 
 pred
 
+## OUTPUT PREDICTION MATRIX VIZ ------------------------------------------------
+pdt <- as.data.table(pred, keep.rownames = TRUE)
+pdt <- melt(pdt, id.vars = "rn")
+idvars <- c("id", "pid", "pid_unique")
+
+pdt <- pdt[!rn %in% idvars & !variable %in% idvars]
+pdt[, ":=" (
+  rn = factor(rn, levels = unique(rn)),
+  variable = factor(variable, levels = unique(rn))
+)]
+
+dmc <- c("p_rai", "p_iai", "p_roi", "p_ioi")
+mc <- pdt[!rn %in% dmc & !variable %in% dmc]
+
+dmo <- c("ego.anal.role", "ptype", "durat_wks", "ai.rate.52", "oi.rate.52")
+otp <- pdt[!rn %in% dmo & !variable %in% dmo]
+
+fullyobs <- c(
+  "ptype", "p_hiv2", "ego.hiv",
+  "ego.age", "ego.race.cat", "cuml.pnum"
+)
+
+pmplot <- function(data) {
+
+  ggplot(data, aes(x = variable, y = rn)) +
+    geom_point(
+      aes(shape = factor(value), fill = factor(value)),
+      size = 2
+    ) +
+    scale_fill_viridis_d(
+      name = "Predictor Used to\nImpute Outcome",
+      option = "magma",
+      begin = 0.5,
+      direction = -1
+    ) +
+    scale_shape_manual(
+      name = "Predictor Used to\nImpute Outcome",
+      values = c(4, 21)
+    ) +
+    labs(
+      x = "Predictor",
+      y = "Outcome"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.ticks = element_blank(),
+      panel.grid = element_blank(),
+      axis.title = element_text(face = "bold"),
+      axis.text.x = element_text(
+        angle = 90, vjust = 0.5, hjust = 1
+      ))
+}
+
+
+pmp_mc <- pmplot(mc[!rn %in% fullyobs])
+pmp_otp <- pmplot(otp[!rn %in% fullyobs])
+
+ggsave(
+  "imputation_diagnostics/predmat_plot_maincas.pdf",
+  plot = pmp_mc,
+  device = "pdf",
+  height = 6,
+  width = 7.5
+)
+
+ggsave(
+  "imputation_diagnostics/predmat_plot_onetime.pdf",
+  plot = pmp_otp,
+  device = "pdf",
+  height = 6,
+  width = 7.5
+)
+
+
+
 ## SPECIFY IMPUTATION METHODS --------------------------------------------------
 
 meth <- make.method(mcong_otp)
