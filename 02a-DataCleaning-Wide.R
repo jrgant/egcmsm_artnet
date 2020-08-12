@@ -252,6 +252,17 @@ avs[, stitestfreq_cat := ifelse(stitestfreq %in% c(NA, 9), NA, stitestfreq)]
 avs[stireg == 1, freq(stitestfreq_cat)] %>% print
 
 
+# %% STI Testing (Both Ever and Never PrEP Users) -----------------------------
+
+avs[, stitest_perweek_all := ifelse(
+  !is.na(stitest_perweek_prep),
+  stitest_perweek_prep,
+  stitest_perweek
+)]
+
+## Per 52 weeks
+avs[, stitest.all.52 := floor(stitest_perweek_all * 52)]
+
 # %% Sexual Behavior Variables ------------------------------------------------
 
 # Naming convention for derivative variables
