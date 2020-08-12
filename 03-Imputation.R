@@ -394,7 +394,7 @@ l2 <- c(
 ## Methods
 meth["abs_sqrt_agediff"] <- "~ I(abs(sqrt(ego.age) - sqrt(p_age_i1)))"
 meth[c(l1_cat, l1_count)] <- "2l.pmm"
-meth[l1_bin] <- "2l.bin"
+meth[l1_bin] <- "2l.pmm"
 meth[l2] <- "2lonly.pmm"
 
 meth
