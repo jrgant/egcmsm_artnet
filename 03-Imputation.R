@@ -4,21 +4,17 @@
 
 pacman::p_load(
   data.table,
-  summarytools,
-  ciTools,
-  dplyr,
-  stringr,
-  lubridate,
+  magrittr,
   ggplot2,
   ggthemes,
   viridis,
   MASS,
   rms,
   Hmisc,
-  mgcv,
-  survey,
   mice,
-  miceadds
+  miceadds,
+  parallel,
+  tictoc
 )
 
 an <- fread(paste0(Sys.getenv("ARTNET_PATH"), "/artnet-wide-cleaned.csv"))
