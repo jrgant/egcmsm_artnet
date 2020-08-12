@@ -214,10 +214,12 @@ names(mcong_otp)
 
 pred <- make.predictorMatrix(mcong_otp)
 
+## p_rai, p_iai, p_roi, p_ioi are complete in one-time contacts.
 completevars <- c(
   "id", "pid", "pid_unique",
   "ego.race.cat", "ego.age", "ego.hiv",
-  "p_hiv2", "ptype", "cuml.pnum"
+  "p_hiv2", "ptype", "cuml.pnum",
+  "p_rai", "p_iai", "p_roi", "p_ioi"
 )
 
 ## Don't impute complete variables.
@@ -279,6 +281,7 @@ rate.vars <- c("ai.rate.52", "oi.rate.52")
 pred
 
 ## OUTPUT PREDICTION MATRIX VIZ ------------------------------------------------
+
 pdt <- as.data.table(pred, keep.rownames = TRUE)
 pdt <- melt(pdt, id.vars = "rn")
 idvars <- c("id", "pid", "pid_unique")
@@ -352,7 +355,6 @@ ggsave(
 )
 
 
-
 ## SPECIFY IMPUTATION METHODS --------------------------------------------------
 
 meth <- make.method(mcong_otp)
@@ -407,6 +409,10 @@ mcong_otp[, oi.rate.52 := as.integer(oi.rate.52)]
 ## NOTE: The conversion of oi.rate.52 above throws a warning about introducing
 ##       missing values. Values appear to match their originals,
 ##       so considering this warning to be benign.
+
+# TABLE OF IMPUTATION METHODS FOR EACH OUTCOME ---------------------------------
+
+as.data.table(cbind(meth), keep.rownames = TRUE)
 
 
 ################################################################################
@@ -570,13 +576,9 @@ check.varlist <- as.data.table(cbind(
 
 check.varlist[, .N, names(check.varlist)][, check := N == 1][]
 
-# FIXME
-# Getting the "glmer does not run" error messages.
-# See org TODO about this issue.
-
 imp_mc <- parlmice(
   mcong,
-  maxit = 100,
+  maxit = 20,
   n.core = 5,
   m = 4,
   predictorMatrix = predmc,
@@ -683,13 +685,9 @@ check.varlist.otp <- as.data.table(cbind(
 
 check.varlist.otp[, .N, names(check.varlist.otp)][, check := N == 1][]
 
-# FIXME
-# Getting the "glmer does not run" error messages.
-# See org TODO about this issue.
-
 imp_otp <- parlmice(
   otp,
-  maxit = 50,
+  maxit = 20,
   n.core = 5,
   m = 4,
   predictorMatrix = predotp,
