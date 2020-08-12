@@ -715,7 +715,7 @@ anl[, .N, .(prep_revised, an_prep_current)]
 ## PrEP use skip patterns (within partnerships):
 ##
 ##   + Only HIV-NEGATIVE EGOS reported on their own PrEP use during a
-##     partnership (P_PREPUSE) or ever (PREP_REVISE). Set to 0.
+##     partnership (P_PREPUSE) or ever (PREP_REVISED). Set to 0.
 ##
 ##   + Only HIV-NEGATIVE or -UNKNOWN PARTNERS had information regarding their
 ##     PrEP use during a partnership. Set to 0.
@@ -724,14 +724,14 @@ anl[, .N, .(prep_revised, an_prep_current)]
 ##   - If respondent reported never being on PrEP, set ego PrEP use within
 ##     partnership to "Never".
 
-anl[prep_revised == 0 | p_prepuse == 3, p_prepuse2 := 0]
+anl[prep_revised == 0 | p_prepuse == 3 | ego.hiv %in% 1:2, p_prepuse2 := 0]
 anl[p_prepuse %in% c(1, 2), p_prepuse2 := 1]  # any PrEP use in partnership
-anl[ego.hiv %in% 1:2, p_prepuse2 := 0] # see skip pattern summary
+# anl[ego.hiv %in% 1:2, p_prepuse2 := 0] # see skip pattern summary
 
 ## Recode partner PrEP use within partnership as ever/never.
 anl[p_prepuse_part %in% c(1, 2), p_prepuse_part2 := 1]
-anl[p_prepuse_part == 3, p_prepuse_part2 := 0] # any PrEP use in partnership
-anl[p_hiv2 == 1, p_prepuse_part2 := 0]  # see skip pattern summary
+anl[p_prepuse_part == 3 | p_hiv2 == 1, p_prepuse_part2 := 0] # any PrEP use in partnership
+# anl[p_hiv2 == 1, p_prepuse_part2 := 0]  # see skip pattern summary
 
 anl[, .N, keyby = p_prepuse]
 anl[, .N, keyby = p_prepuse_part]
@@ -751,8 +751,8 @@ anl[
     p_artuse %in% 1:2, 1, p_artuse
   )]
 
-anl[p_artuse_bin == 3, p_artuse_bin := 0]
-anl[ego.hiv %in% c(0, 2), p_artuse_bin := 0] # See skip pattern summary.
+anl[p_artuse_bin == 3 | ego.hiv %in% c(0, 2), p_artuse_bin := 0]
+# anl[ego.hiv %in% c(0, 2), p_artuse_bin := 0] # See skip pattern summary.
 
 anl[, .N, keyby = .(p_artuse, p_artuse_bin)]
 
@@ -763,8 +763,8 @@ anl[
     p_artuse_part %in% 1:2, 1, p_artuse_part
   )]
 
-anl[p_artuse_part_bin == 3, p_artuse_part_bin := 0]
-anl[p_hiv2 %in% c(0, 2), p_artuse_part_bin := 0] # See skip pattern summary.
+anl[p_artuse_part_bin == 3 | p_hiv2 %in% c(0, 2), p_artuse_part_bin := 0]
+# anl[p_hiv2 %in% c(0, 2), p_artuse_part_bin := 0] # See skip pattern summary.
 
 anl[, .N, keyby = .(p_artuse_part, p_artuse_part_bin)]
 
