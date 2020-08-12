@@ -186,12 +186,14 @@ as.data.table(
 )[order(outflux), .(rn, pobs, outflux)]
 
 ## Select ego-level (i.e., level-2) variables with high outflux to use in
-## imputation models. However, STITEST_PERWEEK is also one of the outcomes
-## of interest and so should be included a priori in the imputation models.
+## imputation models. However, STITEST.ALL.52 is also one of the outcomes
+## of interest, so I include it in the imputation models a priori even
+## though its outcome model won't use the imputed data (very low missingness)
+## for STITEST.ALL.52.
 check_flux <- anflux[, .(
   id,
   an_prep_current, prep_revised,
-  pnua_12m, cuml.pnum, stitest_perweek, mmconc
+  pnua_12m, cuml.pnum, stitest.all.52, mmconc
 ), keyby = id]
 
 check_flux
@@ -231,12 +233,39 @@ pred[, "id"] <- -2
 pred["abs_sqrt_agediff", ] <- 0
 
 ## Don't use variables that are related determinstically due to skip patterns.
-pred["prep_revised", c("ego.hiv", "prep_revised", "p_artuse_bin")] <- 0
-pred["an_prep_current", c("prep_revised", "ego.hiv", "p_artuse_bin")] <- 0
-pred["p_prepuse", c("prep_revised", "an_prep_current", "ego.hiv")] <- 0
-pred["p_prepuse_part", "p_hiv2"] <- 0
-pred["p_artuse_bin", c("prep_revised", "an_prep_current", "ego.hiv")] <- 0
-pred["p_artuse_part_bin", "p_hiv2"] <- 0
+pred[
+  "prep_revised",
+  c("ego.hiv", "an_prep_current", "p_prepuse", "p_artuse_bin")
+] <- 0
+
+pred[
+  "an_prep_current",
+  c("ego.hiv", "prep_revised", "p_artuse_bin", "p_prepuse")
+] <- 0
+
+pred[
+  "p_prepuse",
+  c("ego.hiv", "prep_revised", "p_artuse_bin", "an_prep_current",
+    "abs_sqrt_agediff", "durat_wks", "mmconc", "cuml.pnum", "pnua_12m")
+] <- 0
+
+pred[
+  "p_prepuse_part",
+  c("p_hiv2", "p_artuse_part_bin", "abs_sqrt_agediff",
+    "durat_wks", "mmconc", "cuml.pnum", "pnua_12m")
+] <- 0
+
+pred[
+  "p_artuse_bin",
+  c("ego.hiv", "prep_revised", "an_prep_current", "p_prepuse",
+    "abs_sqrt_agediff", "durat_wks", "mmconc", "cuml.pnum", "pnua_12m")
+] <- 0
+
+pred[
+  "p_artuse_part_bin",
+  c("p_hiv2", "p_prepuse_part", "abs_sqrt_agediff",
+    "durat_wks", "mmconc", "cuml.pnum", "pnua_12m")
+] <- 0
 
 
 ## Prevent ptype-specific variables from imputing outside of relevant ptype.
@@ -336,7 +365,6 @@ l1_cat <- c(
 )
 
 l1_bin <- c(
-  "prep_revised",
   "p_prepuse",
   "p_prepuse_part",
   "p_artuse_bin",
@@ -354,9 +382,9 @@ l1_count <- c(
 
 ## Level 2 variables to impute
 l2 <- c(
-  "an_prep_current",
   "prep_revised",
-  "stitest_perweek",
+  "an_prep_current",
+  "stitest.all.52",
   "pnua_12m",
   "mmconc"
 )
