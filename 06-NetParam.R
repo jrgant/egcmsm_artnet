@@ -859,8 +859,10 @@ casl_summaries <- list(
 )
 
 saveRDS(
-  list(main_artnet_sum = main_summaries,
-       casl_artnet_sum = casl_summaries),
+  list(
+    main_artnet_sum = main_summaries,
+    casl_artnet_sum = casl_summaries
+  ),
   file = "netstats/aggregate_degree_summaries.Rds"
 )
 
