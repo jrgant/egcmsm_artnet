@@ -423,7 +423,6 @@ as.data.table(cbind(meth), keep.rownames = TRUE)
 ## partnerships type. Main/casual in one group and one-time contacts in the
 ## other.
 
-
 # MAIN/CASUAL PARTNERSHIPS -----------------------------------------------------
 
 mcong <- mcong_otp[ptype %in% 1:2][, (sexact.ind) := NULL]
@@ -475,6 +474,7 @@ iniotp <- mice(
 ## beginning of this script ordered these variables intentionally.
 visotp <- iniotp$visitSequence
 visotp
+
 
 ################################################################################
                  ## POST-PROCESSING (ALL PARTNERSHIP TYPES) ##
@@ -587,16 +587,12 @@ imp_mc <- parlmice(
   post = postmc,
   cluster.seed = 45345,
   donors = 10L,
-  # printFlag = TRUE,
+  printFlag = TRUE,
   cl.loads = TRUE
 )
 
 imp_mc$loggedEvents
 
-
-################################################################################
-                      ## WRITE MAIN/CASUAL IMPUTATIONS ##
-################################################################################
 saveRDS(imp_mc, file.path(Sys.getenv("ARTNET_PATH"), "artnet-imputed-mc.Rds"))
 
 
@@ -664,7 +660,6 @@ dev.off()
                        ## IMPUTE ONE-TIME PARTNERSHIPS ##
 ################################################################################
 
-
 ## Make sure lengths are all equal. Should return TRUE.
 all.equal(
   length(names(otp)),
@@ -702,10 +697,6 @@ imp_otp <- parlmice(
 
 imp_otp$loggedEvents
 
-
-################################################################################
-                   ## WRITE ONE-TIME CONTACTS IMPUTATIONS ##
-################################################################################
 saveRDS(imp_otp, file.path(Sys.getenv("ARTNET_PATH"), "artnet-imputed-otp.Rds"))
 
 
@@ -760,11 +751,6 @@ densityplot(
   )
 )
 dev.off()
-
-### closer look at oral and anal act rates
-## pdf(file.path(imp_otpdx_dir, "imp_otp_density_actrates-only.pdf"))
-## densityplot(imp_otp, ~ oi.rate.52 + ai.rate.52)
-## dev.off()
 
 
 ################################################################################
