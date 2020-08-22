@@ -85,7 +85,6 @@ melted_vars <- lapply(setNames(slugs, slugs), function(x) {
                       perl = T)
 
   currcols <- c("id", partner_cols[selpartcols])
-
   dat <- an[, ..currcols][order(id)]
 
   # coerce certain variables to integer format (avoid melt conflicts)
@@ -95,15 +94,14 @@ melted_vars <- lapply(setNames(slugs, slugs), function(x) {
 
   dmelt <- melt(dat, measure = patterns("part"))[order(id)]
   dmelt[, pid := str_extract(variable, "part[1-5]{1}")]
-
   names(dmelt)[names(dmelt) == "value"] <- paste0("p_", x)
 
   out <- dmelt[, c("id", "pid",
                    paste0("p_", x)), with = F][order(pid)]
-  setkey(out, id, pid)
 
+  setkey(out, id, pid)
   return(out)
-  })
+})
 
 lapply(melted_vars[integer_coerce], function(x) sapply(x[, 3], class))
 lapply(melted_vars[integer_coerce], function(x) unique(unlist(x[, 3])))
@@ -137,6 +135,7 @@ plong2 <- plong[
     ego.age.grp = age.grp,
     ego.race.cat = race.cat,
     ego.hiv = hiv.ego,
+    hiv2, hiv3,
     ego.ongoing = pn_ongoing,
     prep_revised
   )],
@@ -678,9 +677,8 @@ anl[, (convert2factor) := lapply(.SD, as.factor), .SDcols = convert2factor]
 
 # %% PARTNER HIV STATUS --------------------------------------------------------
 
-anl[p_hiv == 1, p_hiv2 := 1]  # HIV-positive
-anl[p_hiv == 2, p_hiv2 := 0]  # HIV-negative
-anl[p_hiv %in% 3:4 | is.na(p_hiv), p_hiv2 := 2]  # HIV status unknown
+anl[p_hiv == 1, p_hiv2 := 1]  # HIV-diagnosed
+anl[p_hiv %in% 2:4, p_hiv2 := 0]  # HIV-undiagnosed
 
 anl[, .N, .(p_hiv, p_hiv2)]
 anl[ptype %in% 1:2, .N, keyby = p_hiv2]
@@ -688,10 +686,11 @@ anl[ptype == 3, .N, keyby = p_hiv2]
 
 anl[, .N, ego.hiv]
 
-anl[ego.hiv == 0 & p_hiv2 == 0, hiv.concord := 0] # both HIV-negative
-anl[ego.hiv == 1 & p_hiv2 == 1, hiv.concord := 1] # both HIV-positive
-anl[ego.hiv == 2 & p_hiv2 == 2, hiv.concord := 2] # both HIV unknown
-anl[ego.hiv != p_hiv2, hiv.concord := 3] # HIV serodiscordant
+anl[, hiv.concord := fcase(
+        hiv2 == 0 & p_hiv2 == 0, 0,  # both HIV-undiagnosed
+        hiv2 == 1 & p_hiv2 == 1, 1,  # both HIV-diagnosed
+        hiv2 != p_hiv2, 2  # discordant HIV diagnosis status
+      )]
 
 anl[, .N, keyby = .(ego.hiv, p_hiv2, hiv.concord)]
 
@@ -703,11 +702,11 @@ anl[, .N, keyby = .(ego.hiv, p_hiv2, hiv.concord)]
 ##   + Respondents were asked about current PrEP use only if they reported ever
 ##     having taken PrEP.
 ##
-##   + Respondents were asked about ever taking PrEP only if the reported
+##   + Respondents were asked about ever taking PrEP only if they reported
 ##     being HIV-negative.
 
-anl[ego.hiv %in% c(1, 2), prep_revised := 0]
-anl[, .N, .(ego.hiv, prep_revised)]
+anl[hiv2 == 1, prep_revised := 0]
+anl[, .N, .(hiv2, prep_revised)]
 
 anl[prep_revised == 0, an_prep_current := 0]
 anl[, .N, .(prep_revised, an_prep_current)]
@@ -724,7 +723,7 @@ anl[, .N, .(prep_revised, an_prep_current)]
 ##   - If respondent reported never being on PrEP, set ego PrEP use within
 ##     partnership to "Never".
 
-anl[prep_revised == 0 | p_prepuse == 3 | ego.hiv %in% 1:2, p_prepuse2 := 0]
+anl[prep_revised == 0 | p_prepuse == 3 | hiv3 %in% 1:2, p_prepuse2 := 0]
 anl[p_prepuse %in% c(1, 2), p_prepuse2 := 1]  # any PrEP use in partnership
 # anl[ego.hiv %in% 1:2, p_prepuse2 := 0] # see skip pattern summary
 
@@ -746,12 +745,12 @@ anl[, .N, keyby = p_prepuse_part]
 
 ## Recode ego ART use within partnership as ever/never.
 anl[
-  ego.hiv == 1,
+  hiv2 == 1,
   p_artuse_bin := ifelse(
     p_artuse %in% 1:2, 1, p_artuse
   )]
 
-anl[p_artuse_bin == 3 | ego.hiv %in% c(0, 2), p_artuse_bin := 0]
+anl[p_artuse_bin == 3 | hiv3 %in% c(0, 2), p_artuse_bin := 0]
 # anl[ego.hiv %in% c(0, 2), p_artuse_bin := 0] # See skip pattern summary.
 
 anl[, .N, keyby = .(p_artuse, p_artuse_bin)]
@@ -763,7 +762,7 @@ anl[
     p_artuse_part %in% 1:2, 1, p_artuse_part
   )]
 
-anl[p_artuse_part_bin == 3 | p_hiv2 %in% c(0, 2), p_artuse_part_bin := 0]
+anl[p_artuse_part_bin == 3 | p_hiv2 != 1, p_artuse_part_bin := 0]
 # anl[p_hiv2 %in% c(0, 2), p_artuse_part_bin := 0] # See skip pattern summary.
 
 anl[, .N, keyby = .(p_artuse_part, p_artuse_part_bin)]
