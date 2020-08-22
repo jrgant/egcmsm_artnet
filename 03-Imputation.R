@@ -28,12 +28,26 @@ theme_set(theme_base())
 ## in order to be able to use a function from the miceadds package in
 ## parlmice(). Without this change, the clusters could not see miceadds at all.
 
+
 ################################################################################
                            ## SET UP EGO DATA SET ##
 ################################################################################
 
+## Add main and casual degrees. This variable already exists in anl, but to
+## play nice with some of the missing data visualizations, the degree variables
+## will enter future data objects via this initial merge.
+deg <- anl[, .(id, deg.main, deg.casl)][, .SD[1], by = id]
+table(an[, id] %in% deg[, id])
+
+## Top code main degree at 2. (Small sample size in 3 and 4)
+deg[, deg.main := ifelse(deg.main >= 2, 2, deg.main)]
+deg[, .N, deg.main]
+
+an <- an[deg, on = "id"]
+
 ansub <- copy(an)
 ansub <- ansub[, .(id, cuml.pnum, prep_revised)]
+setkey(ansub, "id")
 
 ## Fix NA coding
 anl[ego.anal.role == "", ego.anal.role := NA]
@@ -64,7 +78,7 @@ anlsub <- copy(anl)
 
 anlsub <- anlsub[, .(
   id, pid, pid_unique,
-  ego.race.cat, ego.age, ego.hiv, ego.anal.role,
+  ego.race.cat, ego.age, hiv2, ego.anal.role,
   p_race.cat, p_age_i1 = p_age_imputed, abs_sqrt_agediff,
   p_hiv2, p_ongoing_ind, durat_wks, ptype,
   cond.prob, p_rai, p_iai, p_roi, p_ioi,
@@ -173,6 +187,7 @@ round(anymiss_casl * 100, 2)
 ## FLUX CHECK ------------------------------------------------------------------
 
 anflux <- copy(an)
+
 anflux <- anflux[, grep("part|m_|age|race", names(an)) := NULL]
 round(sapply(anflux, function(x) sum(is.na(x))) / nrow(anflux), 3)
 
@@ -191,8 +206,8 @@ as.data.table(
 ## though its outcome model won't use the imputed data (very low missingness)
 ## for STITEST.ALL.52.
 check_flux <- anflux[, .(
-  id,
-  an_prep_current, prep_revised,
+  id, hiv2,
+  an_prep_current, prep_revised, deg.main, deg.casl,
   pnua_12m, cuml.pnum, stitest.all.52, mmconc
 ), keyby = id]
 
@@ -217,8 +232,8 @@ pred <- make.predictorMatrix(mcong_otp)
 ## p_rai, p_iai, p_roi, p_ioi are complete in one-time contacts.
 completevars <- c(
   "id", "pid", "pid_unique",
-  "ego.race.cat", "ego.age", "ego.hiv",
-  "p_hiv2", "ptype", "cuml.pnum",
+  "ego.race.cat", "ego.age", "hiv2",
+  "ptype", "cuml.pnum", "deg.main", "deg.casl",
   "p_rai", "p_iai", "p_roi", "p_ioi"
 )
 
@@ -237,17 +252,17 @@ pred["abs_sqrt_agediff", ] <- 0
 ## Don't use variables that are related determinstically due to skip patterns.
 pred[
   "prep_revised",
-  c("ego.hiv", "an_prep_current", "p_prepuse", "p_artuse_bin")
+  c("hiv2", "an_prep_current", "p_prepuse", "p_artuse_bin")
 ] <- 0
 
 pred[
   "an_prep_current",
-  c("ego.hiv", "prep_revised", "p_artuse_bin", "p_prepuse")
+  c("hiv2", "prep_revised", "p_artuse_bin", "p_prepuse")
 ] <- 0
 
 pred[
   "p_prepuse",
-  c("ego.hiv", "prep_revised", "p_artuse_bin", "an_prep_current",
+  c("hiv2", "prep_revised", "p_artuse_bin", "an_prep_current",
     "abs_sqrt_agediff", "durat_wks", "mmconc", "cuml.pnum", "pnua_12m")
 ] <- 0
 
@@ -259,7 +274,7 @@ pred[
 
 pred[
   "p_artuse_bin",
-  c("ego.hiv", "prep_revised", "an_prep_current", "p_prepuse",
+  c("hiv2", "prep_revised", "an_prep_current", "p_prepuse",
     "abs_sqrt_agediff", "durat_wks", "mmconc", "cuml.pnum", "pnua_12m")
 ] <- 0
 
@@ -299,7 +314,7 @@ dmo <- c("ego.anal.role", "ptype", "durat_wks", "ai.rate.52", "oi.rate.52")
 otp <- pdt[!rn %in% dmo & !variable %in% dmo]
 
 fullyobs <- c(
-  "ptype", "p_hiv2", "ego.hiv",
+  "ptype", "hiv2", "deg.main", "deg.casl",
   "ego.age", "ego.race.cat", "cuml.pnum"
 )
 
@@ -371,6 +386,7 @@ l1_bin <- c(
   "p_prepuse_part",
   "p_artuse_bin",
   "p_artuse_part_bin",
+  "p_hiv2",
   sexact.ind
 )
 
@@ -402,7 +418,7 @@ meth
 sapply(mcong_otp, class)
 
 ## Fix classes for a couple of variables.
-fixclass <- c("p_hiv2", "ego.hiv")
+fixclass <- c("p_hiv2", "hiv2", "deg.main", "deg.casl")
 mcong_otp[, (fixclass) := lapply(.SD, as.factor), .SDcols = fixclass]
 mcong_otp[, oi.rate.52 := as.integer(oi.rate.52)]
 
@@ -515,12 +531,12 @@ postotp <- iniotp$post
 
 ## Formulas.
 post_p_prepuse <- "imp[[j]][data$prep_revised[!r[, j]] != 1, i] <- 0"
-post_p_artuse_bin <- "imp[[j]][data$ego.hiv[!r[, j]] %in% c(0, 2), i] <- 0"
+post_p_artuse_bin <- "imp[[j]][data$hiv2[!r[, j]] == 0, i] <- 0"
 
 post_p_prepuse_part <- "imp[[j]][data$p_hiv2[!r[, j]] == 1, i] <- 0"
-post_p_artuse_part_bin <- "imp[[j]][data$p_hiv2[!r[, j]] %in% c(0, 2), i] <- 0"
+post_p_artuse_part_bin <- "imp[[j]][data$p_hiv2[!r[, j]] == 0, i] <- 0"
 
-post_prep_revised <- "imp[[j]][data$ego.hiv[!r[, j]] == 1, i] <- 0"
+post_prep_revised <- "imp[[j]][data$hiv2[!r[, j]] == 1, i] <- 0"
 post_an_prep_current <- "imp[[j]][data$prep_revised[!r[, j]] == 0, i] <- 0"
 
 ## Assignment.
@@ -593,68 +609,6 @@ imp_mc <- parlmice(
 
 imp_mc$loggedEvents
 
-saveRDS(imp_mc, file.path(Sys.getenv("ARTNET_PATH"), "artnet-imputed-mc.Rds"))
-
-
-################################################################################
-                     ## DIAGNOSE MAIN/CASUAL IMPUTATIONS ##
-################################################################################
-
-imp_mc <- readRDS(
-  file.path(Sys.getenv("ARTNET_PATH"), "artnet-imputed-mc.Rds")
-)
-
-## Check for impossible combinations (violations of skip patterns from ARTnet)
-cimp_mc <- as.data.table(complete(imp_mc, "long"))
-
-### PrEP, ego
-mcong[, .N, keyby = .(ego.hiv, prep_revised)]   # original data
-cimp_mc[, .N, keyby = .(ego.hiv, prep_revised)]     # imp_mcuted data
-
-mcong[, .N, keyby = .(ego.hiv, p_prepuse)]      # original data
-cimp_mc[, .N, keyby = .(ego.hiv, p_prepuse)]        # imp_mcuted data
-
-mcong[, .N, keyby = .(an_prep_current, prep_revised)]  # original data
-cimp_mc[, .N, keyby = .(an_prep_current, prep_revised)]    # imp_mcuted data
-
-
-### PrEP, alter
-mcong[, .N, keyby = .(p_hiv2, p_prepuse_part)]  # original data
-cimp_mc[, .N, keyby = .(p_hiv2, p_prepuse_part)]    # imp_mcuted data
-
-### ART, ego
-mcong[, .N, keyby = .(ego.hiv, p_artuse_bin)]      # original data
-cimp_mc[, .N, keyby = .(ego.hiv, p_artuse_bin)]        # imp_mcuted data
-
-### ART, alter
-mcong[, .N, keyby = .(p_hiv2, p_artuse_part_bin)]  # original data
-cimp_mc[, .N, keyby = .(p_hiv2, p_artuse_part_bin)]    # imp_mcuted data
-
-
-imp_dx_dir <- "imputation_diagnostics"
-
-### Trace plots
-pdf(file.path(imp_dx_dir, paste0("imp_mc_trace_", Sys.Date(), ".pdf")), onefile = TRUE)
-plot(imp_mc)
-dev.off()
-
-### Density plots
-pdf(file.path(imp_dx_dir, paste0("imp_mc_density_", Sys.Date(), ".pdf")), onefile = TRUE)
-densityplot(
-  imp_mc,
-  thicker = 3,
-  scales = list(
-    x = list(relation = "free"),
-    y = list(relation = "free")
-  )
-)
-dev.off()
-
-### closer look at oral and anal act rates
-## pdf(file.path(imp_mcdx_dir, "imp_mc_density_actrates-only.pdf"))
-## densityplot(imp_mc, ~ oi.rate.52 + ai.rate.52)
-## dev.off()
-
 
 ################################################################################
                        ## IMPUTE ONE-TIME PARTNERSHIPS ##
@@ -697,11 +651,245 @@ imp_otp <- parlmice(
 
 imp_otp$loggedEvents
 
-saveRDS(imp_otp, file.path(Sys.getenv("ARTNET_PATH"), "artnet-imputed-otp.Rds"))
+
+################################################################################
+                            ## VARIABLE RECODING ##
+################################################################################
+
+## NOTE  The exported model objects we get from Epistats.R need to conform to
+##       the variable coding schemes used in the epidemic simulation modules.
+##       We also subset the imputed data sets so they include only variables
+##       in the analytic models.
+##
+##       Several variables are created within this section for use in the
+##       statistical models. These new variables are created ONLY within the
+##       imputed datasets, a subset denoted by dt[.imp > 0] in the code below.
+
+## Function: Make variables for use in statistical models.
+makevars <- function(data) {
+
+  ## Temporary numerical version of race.cat.
+  reth_lvls <- c("black", "hispanic", "other", "white")
+
+  data[.imp > 0, ":="(
+    race.i.cat = sapply(race.i, grep, x = reth_lvls),
+    race.j.cat = sapply(race.j, grep, x = reth_lvls)
+  )]
+
+  data[.imp > 0, .N, keyby = .(race.i, race.i.cat)]
+  data[.imp > 0, .N, keyby = .(race.j, race.j.cat)]
+
+  ## Create race/ethnicity combination variable for each partnership.
+  data[.imp > 0, race.combo := mapply(
+    function(x, y) paste0(sort(c(x, y)), collapse = ""),
+    race.i.cat,
+    race.j.cat
+    )]
+
+  data[, race.combo := factor(race.combo)]
+
+  data[.imp > 0, .N, keyby = race.combo]
+
+  ## Create HIV diagnosis status concordance variable.
+  ##  - 1 = Both negative or unknown
+  ##  - 2 = Serodiscordant (one known HIV-positive and one negative/undiagnosed)
+  ##  - 3 = Both diagnosed positive
+  data[.imp > 0, hiv.concord := fcase(
+    diag.status.i == 1 & diag.status.j == 1, 3,
+    diag.status.i != 1 & diag.status.j != 1, 1,
+    default = 2
+  )]
+
+  data[, hiv.concord := factor(hiv.concord)]
+  data[.imp > 0, .N, keyby = .(hiv.concord, diag.status.i, diag.status.j)]
+
+  ## Create anyPrEP variable.
+  data[.imp > 0, any.prep := fifelse(prep.i == 1 | prep.j == 1, 1, 0)]
+
+  return(invisible)
+}
+
+## Drop variables.
+dropvars <- c(
+  "pid", "mmconc", "cuml.pnum", "pnua_12m", "prep_revised", "an_prep_current",
+  "p_artuse_bin", "p_artuse_part_bin"
+)
+
+## Renaming scheme.
+rn_vars <- c(
+ "race.i"           = "ego.race.cat",
+ "age.i"            = "ego.age",
+ "diag.status.i"    = "hiv2",
+ "prep.i"           = "p_prepuse",
+ "race.j"           = "p_race.cat",
+ "age.j"            = "p_age_i1",
+ "diag.status.j"    = "p_hiv2",
+ "prep.j"           = "p_prepuse_part"
+# "stitest_perweek"  = "stitest_perweek_all"
+)
+
+## Main/casual.
+cmc_tmp <- as.data.table(complete(imp_mc, "long", include = TRUE))
+cmc_tmp[, (dropvars) := NULL]
+names(cmc_tmp)
+
+setnames(cmc_tmp, rn_vars, names(rn_vars))
+names(cmc_tmp)
+
+makevars(cmc_tmp)
+cmc_tmp
+
+## One-time contacts.
+cop_tmp <- as.data.table(complete(imp_otp, "long", include = TRUE))
+cop_tmp[, (dropvars) := NULL]
+names(cop_tmp)
+
+rn_vars2 <- rn_vars[rn_vars != "ego.anal.role"]
+setnames(cop_tmp, rn_vars2, names(rn_vars2))
+names(cop_tmp)
+
+makevars(cop_tmp)
+cop_tmp
+
+## Create anal sex role variable.
+mc_rolesub <- cmc_tmp[.imp > 0, .(.imp, id, ego.anal.role)]
+mc_matchrole <- dcast(mc_rolesub, .imp + id ~ ego.anal.role)
+
+mc_matchrole[, mcrc := fcase(
+  Versatile > 0, "Versatile",
+  Insertive > 0 & Receptive > 0, "Versatile",
+  Insertive > 0 & Receptive == 0 & Versatile == 0, "Insertive",
+  Receptive > 0 & Insertive == 0 & Versatile == 0, "Receptive"
+)]
+
+mc_matchrole[, .N, keyby = .(mcrc, Insertive, Receptive, Versatile)]
+
+mc_roleout <- mc_matchrole[, .(.imp, id, rc = mcrc)]
+mc_roleout[, .N, .(.imp, id)][, sum(N != 1), .imp]
+
+otp_rolesub <- cop_tmp[
+  .imp > 0,
+  .(.imp, id, p_rai, p_iai)
+]
+
+otp_matchrole <- otp_rolesub[, .(
+  anyrec = sum(p_rai) > 0,
+  anyins = sum(p_iai) > 0
+), by = .(.imp, id)]
+
+otp_matchrole[, otrc := fcase(
+  anyrec & anyins, "Versatile",
+  anyrec & !anyins, "Receptive",
+  !anyrec & anyins, "Insertive",
+  !anyrec & !anyins, "Neither"
+)]
+
+otp_roleout <- otp_matchrole[, .(.imp, id, rc = otrc)]
+otp_roleout[, .N, .(.imp, id)][, sum(N != 1), .imp]
+
+rolefin <- as.data.table(rbind(mc_roleout, otp_roleout))
+rolefin <- dcast(rolefin, .imp + id ~ rc)
+
+## NOTE
+##   When assigning the respondent-specific role class, we assign those
+##   still missing data on anal sex activity within their past 5 partnerships
+##   as Versatile.
+
+rolefin[, role.class := fcase(
+  Versatile > 0, "Versatile",
+  Insertive > 0 & Receptive > 0, "Versatile",
+  Insertive > 0 & Receptive == 0 & Versatile == 0, "Insertive",
+  Receptive > 0 & Insertive == 0 & Versatile == 0, "Receptive",
+  Neither > 0 & Insertive == 0 & Receptive == 0 & Versatile == 0, "Versatile"
+)]
+
+droptmpvars <- c("Insertive", "Receptive", "Versatile", "Neither")
+rolefin[, (droptmpvars) := NULL]
+
+rolefin
+
+## Resave main/casual and one-time contacts data sets as imputation objects.
+cmc_tmp_out <- rolefin[cmc_tmp, on = c(".imp", "id")]
+otp_tmp_out <- rolefin[cop_tmp, on = c(".imp", "id")]
+otp_tmp_out[, ":="(
+  ai_once = ifelse(p_rai + p_iai > 0, 1, 0),
+  oi_once = ifelse(p_roi + p_ioi > 0, 1, 0)
+)]
+
+otp_tmp_out[, .N, ai_once]
+otp_tmp_out[, .N, oi_once]
+
+imp_mc <- as.mids(cmc_tmp_out)
+imp_otp <- as.mids(otp_tmp_out)
+
+## Save imputation data sets.
+saveRDS(
+  imp_otp,
+  file.path(Sys.getenv("ARTNET_PATH"), "artnet-imputed-otp-augmented.Rds")
+)
+
+saveRDS(
+  imp_mc,
+  file.path(Sys.getenv("ARTNET_PATH"), "artnet-imputed-mc-augmented.Rds")
+)
 
 
 ################################################################################
                      ## DIAGNOSE MAIN/CASUAL IMPUTATIONS ##
+################################################################################
+
+imp_mc <- readRDS(
+  file.path(Sys.getenv("ARTNET_PATH"), "artnet-imputed-mc.Rds")
+)
+
+## Check for impossible combinations (violations of skip patterns from ARTnet)
+cimp_mc <- as.data.table(complete(imp_mc, "long"))
+
+### PrEP, ego
+mcong[, .N, keyby = .(hiv2, prep_revised)]   # original data
+cimp_mc[, .N, keyby = .(hiv2, prep_revised)]     # imp_mcuted data
+
+mcong[, .N, keyby = .(hiv2, p_prepuse)]      # original data
+cimp_mc[, .N, keyby = .(hiv2, p_prepuse)]        # imp_mcuted data
+
+mcong[, .N, keyby = .(an_prep_current, prep_revised)]  # original data
+cimp_mc[, .N, keyby = .(an_prep_current, prep_revised)]    # imp_mcuted data
+
+### PrEP, alter
+mcong[, .N, keyby = .(p_hiv2, p_prepuse_part)]  # original data
+cimp_mc[, .N, keyby = .(p_hiv2, p_prepuse_part)]    # imp_mcuted data
+
+### ART, ego
+mcong[, .N, keyby = .(hiv2, p_artuse_bin)]      # original data
+cimp_mc[, .N, keyby = .(hiv2, p_artuse_bin)]        # imp_mcuted data
+
+### ART, alter
+mcong[, .N, keyby = .(p_hiv2, p_artuse_part_bin)]  # original data
+cimp_mc[, .N, keyby = .(p_hiv2, p_artuse_part_bin)]    # imp_mcuted data
+
+
+imp_dx_dir <- "imputation_diagnostics"
+
+### Trace plots
+pdf(file.path(imp_dx_dir, paste0("imp_mc_trace_", Sys.Date(), ".pdf")), onefile = TRUE)
+plot(imp_mc)
+dev.off()
+
+### Density plots
+pdf(file.path(imp_dx_dir, paste0("imp_mc_density_", Sys.Date(), ".pdf")), onefile = TRUE)
+densityplot(
+  imp_mc,
+  thicker = 3,
+  scales = list(
+    x = list(relation = "free"),
+    y = list(relation = "free")
+  )
+)
+dev.off()
+
+
+################################################################################
+                  ## DIAGNOSE ONE-TIME CONTACT IMPUTATIONS ##
 ################################################################################
 
 imp_otp <- readRDS(
@@ -712,11 +900,11 @@ imp_otp <- readRDS(
 cimp_otp <- as.data.table(complete(imp_otp, "long"))
 
 ### PrEP, ego
-otp[, .N, keyby = .(ego.hiv, prep_revised)]       # original data
-cimp_otp[, .N, keyby = .(ego.hiv, prep_revised)]  # imp_otputed data
+otp[, .N, keyby = .(hiv2, prep_revised)]       # original data
+cimp_otp[, .N, keyby = .(hiv2, prep_revised)]  # imp_otputed data
 
-otp[, .N, keyby = .(ego.hiv, p_prepuse)]          # original data
-cimp_otp[, .N, keyby = .(ego.hiv, p_prepuse)]     # imp_otputed data
+otp[, .N, keyby = .(hiv2, p_prepuse)]          # original data
+cimp_otp[, .N, keyby = .(hiv2, p_prepuse)]     # imp_otputed data
 
 otp[, .N, keyby = .(an_prep_current, prep_revised)]       # original data
 cimp_otp[, .N, keyby = .(an_prep_current, prep_revised)]  # imp_otputed data
@@ -726,8 +914,8 @@ otp[, .N, keyby = .(p_hiv2, p_prepuse_part)]       # original data
 cimp_otp[, .N, keyby = .(p_hiv2, p_prepuse_part)]  # imp_otputed data
 
 ### ART, ego
-otp[, .N, keyby = .(ego.hiv, p_artuse_bin)]        # original data
-cimp_otp[, .N, keyby = .(ego.hiv, p_artuse_bin)]   # imp_otputed data
+otp[, .N, keyby = .(hiv2, p_artuse_bin)]        # original data
+cimp_otp[, .N, keyby = .(hiv2, p_artuse_bin)]   # imp_otputed data
 
 ### ART, alter
 otp[, .N, keyby = .(p_hiv2, p_artuse_part_bin)]       # original data
@@ -751,58 +939,3 @@ densityplot(
   )
 )
 dev.off()
-
-
-################################################################################
-                              ## TEST ANALYSIS ##
-################################################################################
-
-## NOTE: Remove this section when done.
-
-library(data.table)
-library(MASS)
-library(mice)
-library(ggplot2)
-library(magrittr)
-
-## NOTE:
-## Reference for variance estimation of model predictions using the "combine
-## then predict" approach:
-##
-## Miles A. Obtaining Predictions from Models Fit to Multiply Imputed Data.
-## Sociol. Methods Res. 2016;45(1):175–185.
-## https://doi.org/10.1177/0049124115610345
-
-imp2 <- readRDS(
-  file.path(Sys.getenv("ARTNET_PATH"), "artnet-maincas-imputed.rds")
-)
-
-test.ai <- with(imp2, glm.nb(
-  ai.rate.52 ~
-    ptype +
-    ego.race.cat + p_race.cat +
-    ego.age + p_age_i1 +
-    abs_sqrt_agediff
-))
-
-test.ai.pooled <- pool(test.ai)
-
-sapply(1:20, function(x) test.ai$analyses[[x]]$theta)
-
-test.ai.cc <- glm.nb(
-  ai.rate.52 ~
-    ptype + ego.race.cat +
-    p_race.cat + ego.age +
-    p_age_i1 + abs_sqrt_agediff,
-  data = mcong_otp
-)
-
-pool(with(imp2, lm(p_age_i1 ~ 1))) # quick test to get pooled means with standard errors
-
-cbind(test.ai.pooled$pooled$estimate, coef(test.ai.cc))
-
-lapply(test.ai$analyses, predict, type = "response")
-
-class(test.ai.pooled)
-summary(test.ai.pooled)
-predict(test.ai.pooled)
