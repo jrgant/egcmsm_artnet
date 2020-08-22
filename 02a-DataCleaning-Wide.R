@@ -111,6 +111,7 @@ table(is.na(avs$age.grp))
 
 avs[, stby(age, age.grp, descr)]
 
+
 # %% HIV Status --------------------------------------------------------
 
 freq(avs$artnetevertest) %>% print
@@ -130,19 +131,29 @@ avs[, .N, keyby = .(artnetevertest,
                     artnetstatus)][]
 
 # create HIV status variable
-avs[, hiv.ego := case_when(
-  !is.na(artnetstatus) ~ artnetstatus - 1,
-  artnetevertest %in% c(NA, 0) ~ 2,  # 2 = no self-knowledge of HIV status
-  artnetevrpos == 1 ~ 1,
-  artnetrcntrslt == 2 ~ 1,
-  artnetrcntrslt == 3 & artnetevrpos == 0 ~ 0,
-  is.na(artnetrcntrslt) & is.na(artnetstatus) & artnetevrpos == 0 ~ 0,
-  artnetrcntrslt == 1 ~ 0,
-  TRUE ~ 2
+avs[, .N, .(artnetstatus, as.numeric(artnetstatus))]
+avs[, .N, .(artnetevertest, as.numeric(artnetevertest))]
+avs[, .N, .(artnetrcntrslt, as.numeric(artnetrcntrslt))]
+avs[, .N, .(artnetevrpos, as.numeric(artnetevrpos))]
+
+anv <- c("artnetstatus", "artnetevertest", "artnetrcntrslt", "artnetevrpos")
+avs[, artnetstatus := as.numeric(artnetstatus)]
+avs[, artnetevertest := as.numeric(artnetevertest)]
+avs[, artnetrcntrslt := as.numeric(artnetrcntrslt)]
+avs[, artnetevrpos := as.numeric(artnetevrpos)]
+
+avs[, hiv.ego := fcase(
+  !is.na(artnetstatus), artnetstatus - 1,
+  artnetevertest %in% c(NA, 0), 2,  # 2 = no self-knowledge of HIV status
+  artnetevrpos == 1, 1,
+  artnetrcntrslt == 2, 1,
+  artnetrcntrslt == 3 & artnetevrpos == 0, 0,
+  is.na(artnetrcntrslt) & is.na(artnetstatus) & artnetevrpos == 0, 0,
+  artnetrcntrslt == 1, 0,
+  default = 2
 )]
 
 # set label
-label(avs$hiv.ego) <- "Derived HIV status"
 freq(avs$hiv.ego) %>% print
 
 # check

@@ -790,6 +790,28 @@ anl[ego.anal.role == "", ego.anal.role := NA]
 anl[p_race.cat == "", p_race.cat := NA]
 
 
+# %% ADD MAIN/CASUAL ONGOING DEGREES -------------------------------------------
+
+dtmc <- copy(anl[, .(id, pid, ptype, p_ongoing_ind)])
+
+dtmc[, deg.main := fcase(
+            ptype == 1 & p_ongoing_ind == 1, 1,
+            default = 0
+          )]
+
+dtmc[, deg.casl := fcase(
+         ptype == 2 & p_ongoing_ind == 1, 1,
+         default = 0
+       )]
+
+degs <- dtmc[, .(
+  deg.main = sum(deg.main),
+  deg.casl = sum(deg.casl)
+), keyby = id]
+
+anl <- degs[anl, on = "id"]
+
+
 # %% WRITE LONG DATASET --------------------------------------------------------
 
 fwrite(anl, paste0(Sys.getenv("ARTNET_PATH"), "/artnet-long-cleaned.csv"))
