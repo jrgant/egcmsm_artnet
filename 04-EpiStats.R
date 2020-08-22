@@ -36,13 +36,6 @@ sort(names(anl))
 theme_set(theme_base())
 
 
-# %% MAKE ABS_SQRT_AGEDIFF  VARIABLE -------------------------------------------
-
-anl[, abs_sqrt_agediff := abs(sqrt(ego.age) - sqrt(p_age_imputed))]
-
-histogram(anl$abs_sqrt_agediff)
-
-
 # %% STI TESTING FREQUENCY - MSM NEVER ON PREP  --------------------------------
 
 ra_grid <-
