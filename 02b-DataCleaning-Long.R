@@ -687,8 +687,8 @@ anl[ptype == 3, .N, keyby = p_hiv2]
 anl[, .N, ego.hiv]
 
 anl[, hiv.concord := fcase(
-        hiv2 == 0 & p_hiv2 == 0, 0,  # both HIV-undiagnosed
-        hiv2 == 1 & p_hiv2 == 1, 1,  # both HIV-diagnosed
+        hiv2 == 0 & p_hiv2 == 0, 1,  # both HIV-undiagnosed
+        hiv2 == 1 & p_hiv2 == 1, 3,  # both HIV-diagnosed
         hiv2 != p_hiv2, 2  # discordant HIV diagnosis status
       )]
 
