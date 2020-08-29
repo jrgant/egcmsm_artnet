@@ -1,22 +1,31 @@
-# %% LOAD ----------------------------------------------------------------------
+#[allow(non_snake_case)]
+
+################################################################################
+                       ## HELPER OBJECTS AND FUNCTIONS ##
+################################################################################
+
+## h/t: https://stackoverflow.com/questions/36344415/is-there-some-way-to-not-
+##      show-a-warning-for-non-snake-case-identifiers
 
 source("01-Import-Private-Data.R")
 
 pacman::p_load(
   data.table,
-  summarytools,
   ciTools,
   dplyr,
   stringr,
   lubridate,
   ggplot2,
   ggthemes,
+  ggridges,
   viridis,
   MASS,
   rms,
   Hmisc,
   mgcv,
-  survey
+  survey,
+  mice,
+  pscl
 )
 
 # function to calculate number of unique levels in a variable
@@ -27,7 +36,11 @@ pd_path <- Sys.getenv("ARTNET_PATH")
 
 an <- fread(file.path(pd_path, "artnet-wide-cleaned.csv"))
 anl <- fread(file.path(pd_path, "artnet-long-cleaned.csv"))
-imp <- readRDS(file.path(pd_path, "artnet-long-imputed.Rds"))
+
+imp_mc <- readRDS(file.path(pd_path, "artnet-imputed-mc-augmented.Rds"))
+imp_otp <- readRDS(file.path(pd_path, "artnet-imputed-otp-augmented.Rds"))
+mcdt <- as.data.table(complete(imp_mc, action = "long"))
+otpdt <- as.data.table(complete(imp_otp, action = "long"))
 
 sort(names(an))
 sort(names(anl))
@@ -36,808 +49,654 @@ sort(names(anl))
 theme_set(theme_base())
 
 
-# %% STI TESTING FREQUENCY - MSM NEVER ON PREP  --------------------------------
+################################################################################
+                       ## HELPER OBJECTS AND FUNCTIONS ##
+################################################################################
 
-ra_grid <-
-  as.data.table(expand.grid(
-    race.cat = unique(an$race.cat),
-    age.grp = unique(an$age.grp),
-    stringsAsFactors = FALSE
-  ))[order(age.grp, race.cat)]
+## NOTE
+## Majority vote method described in:
+## Van Buuren, S. (2018). Flexible imputation of missing data, second edition.
+## http://dx.doi.org/10.1201/9780429492259
+##
+## Limitation: method used here is subject to overfitting.
 
-print(ra_grid)
+## Identify the average values at these quantiles across imputations and use
+## as common knots across imputation data sets. Very little difference in
+## quantile values across the data sets, but need to use static values to
+## predict on new data without error.
+knots3 <- c(0.1, 0.5, 0.9)
+knots5 <- c(0.05, 0.275, 0.5, 0.725, 0.95)
+contvars <- c("age.i", "age.j", "abs_sqrt_agediff", "durat_wks")
 
-
-## NEVER ON PREP
-
-noprep <- an[prep_revised != 1, .(
-  id, age, race.cat, age.grp, prep_revised, stitest_2yr
-  )][order(id)]
-
-print(noprep)
-
-prep <- an[prep_revised == 1, .(
-  id, age, race.cat, age.grp, prep_revised, stitest_2yr_prep
-  )][order(id)]
-
-print(prep)
-
-# 2 missing stitest_2yr info
-mice::md.pattern(noprep)
-mice::md.pattern(prep)
-
-# distribution of number of STI tests (any), past 2 years
-hist(noprep$stitest_2yr)
-summary(noprep$stitest_2yr)
-
-noprep[, .(
-  mean = mean(stitest_2yr, na.rm = T),
-  var = var(stitest_2yr, na.rm = T)
-)]
-
-fit_stitest_2yr_noprep <- MASS::glm.nb(
-  stitest_2yr ~ race.cat + factor(age.grp),
-  data = noprep
-)
-
-summary(fit_stitest_2yr_noprep)
-
-print(broom::tidy(fit_stitest_2yr_noprep, conf.int = TRUE))
-
-stitest_noprep_pred <- cbind(ra_grid,
-  pred_2yr = predict(
-    fit_stitest_2yr_noprep,
-    newdata = ra_grid,
-    type = "response"
-    )
-  ) %>%
-  ciTools::add_ci(.,
-    fit_stitest_2yr_noprep,
-    names = c("pred_2yr_ll95", "pred_2yr_ul95")
-  ) %>%
-  setDT %>%
-  .[, ":="(
-      wkrate = pred_2yr / (52 * 2),
-      wkrate_ll95 = pred_2yr_ll95 / (52 * 2),
-      wkrate_ul95 = pred_2yr_ul95 / (52 * 2)
-    )]
-
-print(stitest_noprep_pred)
-
-ggplot(
-  stitest_noprep_pred,
-  aes(x = factor(age.grp),
-      y = pred_2yr,
-      group = race.cat,
-      color = race.cat,
-      fill = race.cat)
-  ) +
-  geom_pointrange(
-    aes(ymin = pred_2yr_ll95,
-        ymax = pred_2yr_ul95),
-    size = 1) +
-  scale_color_viridis_d() +
-  geom_line(size = 1) +
-  labs(title = "STI tests among never-PrEP MSM")
-
-
-# %% STI TESTING FREQUENCY - MSM EVER ON PREP  ---------------------------------
-
-# STI tests outside of PrEP follow-up
-fit_stitest_2yr_prep <- glm.nb(
-  stitest_2yr_prep ~ race.cat + factor(age.grp),
-  data = prep
-)
-
-summary(fit_stitest_2yr_prep)
-
-stitest_prep_pred <- cbind(ra_grid,
-  pred_2yr = predict(
-    fit_stitest_2yr_prep,
-    newdata = ra_grid,
-    type = "response"
-    )
-  ) %>%
-  ciTools::add_ci(.,
-    fit_stitest_2yr_prep,
-    names = c("pred_2yr_ll95", "pred_2yr_ul95")
-  ) %>%
-  setDT %>%
-  .[, ":="(
-      wkrate = pred_2yr / (52 * 2),
-      wkrate_ll95 = pred_2yr_ll95 / (52 * 2),
-      wkrate_ul95 = pred_2yr_ul95 / (52 * 2)
-    )]
-
-print(stitest_prep_pred)
-
-ggplot(
-  stitest_prep_pred,
-  aes(x = factor(age.grp),
-      y = pred_2yr,
-      group = race.cat,
-      color = race.cat,
-      fill = race.cat)
-  ) +
-  geom_pointrange(
-    aes(ymin = pred_2yr_ll95,
-        ymax = pred_2yr_ul95),
-    size = 1,
-    alpha = 0.4) +
-  scale_color_viridis_d() +
-  geom_line(size = 1) +
-  labs(title = "Non-PrEP STI tests among ever-PrEP MSM")
-
-
-# %% SEX ACT RATES ------------------------------------------
-
-plot_actrates_main <- function(data, var, filterby) {
-
-  selcols <- c("id", "pid", "ptype", filterby, var)
-
-  data[get(filterby) == 1, ..selcols] %>%
-    ggplot(aes_string(x = var)) +
-    geom_bar(stat = "bin", color = "white", fill = "#990000") +
-    geom_rug(color = "gray", alpha = 0.5) +
-    facet_wrap(~ ptype)
-
+get_qts <- function(data, contvars, k) {
+  lapply(setNames(contvars, contvars), function(x) {
+    a <- split(data[.imp > 0], by = ".imp")
+    sapply(a, function(y) {
+      if (x == "age.i") {
+        quantile(y[, first(get(x)), id][, V1], k)
+      } else {
+        quantile(y[, get(x)], k)
+      }
+    })
+  })
 }
 
-p.recai.rate <- plot_actrates_main(anl[ptype %in% 1:2], "recai.rate", "p_rai")
-p.insai.rate <- plot_actrates_main(anl[ptype %in% 1:2], "insai.rate", "p_iai")
-p.recoi.rate <- plot_actrates_main(anl[ptype %in% 1:2], "recoi.rate", "p_roi")
-p.insoi.rate <- plot_actrates_main(anl[ptype %in% 1:2], "insoi.rate", "p_ioi")
+mc_qts3 <- get_qts(mcdt, contvars = contvars, knots3)
+mc_qts3 <- as.data.frame(sapply(mc_qts3, rowMeans))
 
-# 14.4% of eligible responses missing
-anl[ptype %in% 1:2 & p_rai == 1, .(
-  missing = sum(is.na(recai.rate)),
-  n_elig = .N
-  )][, pct := round(missing / n_elig * 100, digits = 2)][]
+mc_qts5 <- get_qts(mcdt, contvars = contvars, knots5)
+mc_qts5 <- as.data.frame(sapply(mc_qts5, rowMeans))
 
-# 14.8% of eligible responses missing
-anl[ptype %in% 1:2 & p_iai == 1, .(
-  missing = sum(is.na(insai.rate)),
-  n_elig = .N
-)][, pct := round(missing / n_elig * 100, digits = 2)][]
+otp_qts3 <- get_qts(otpdt, contvars = contvars[-4], knots3)
+otp_qts3 <- as.data.frame(sapply(otp_qts3, rowMeans))
 
-# 15.3% of eligible responses missing
-anl[ptype %in% 1:2 & p_roi == 1, .(
-  missing = sum(is.na(recoi.rate)),
-  n_elig = .N
-)][, pct := round(missing / n_elig * 100, digits = 2)][]
+otp_qts5 <- get_qts(otpdt, contvars = contvars[-4], knots5)
+otp_qts5 <- as.data.frame(sapply(otp_qts5, rowMeans))
 
-# 35.5% of eligible responses missing
-anl[ptype %in% 1:2 & p_ioi == 1, .(
-  missing = sum(is.na(insoi.rate)),
-  n_elig = .N
-)][, pct := round(missing / n_elig * 100, digits = 2)][]
+## Set up the combinations of spline and polynomial terms
 
-
-# %% SEX ACT PROBABILITY, ONE-TIME CONTACTS ------------------------------------
-
-sort(names(anl))
-nrow(anl[ptype == 3])
-
-nmiss_op_rai <- anl[ptype == 3, sum(is.na(p_rai_once))]
-nmiss_op_iai <- anl[ptype == 3, sum(is.na(p_iai_once))]
-nmiss_op_roi <- anl[ptype == 3, sum(is.na(p_roi_once))]
-nmiss_op_ioi <- anl[ptype == 3, sum(is.na(p_ioi_once))]
-
-data.table(
-  nmiss_op_rai,
-  nmiss_op_iai,
-  nmiss_op_roi,
-  nmiss_op_ioi
-)[]
-
-# all missing _once variables accompanied by numeric entry to
-#  p_actsprefernot or p_actsdk (meaning non-structurally missing)
-anl[ptype == 3, .N, keyby = .(p_rai_once, p_actsprefernot, p_actsdk)]
-anl[ptype == 3, .N, keyby = .(p_iai_once, p_actsprefernot, p_actsdk)]
-anl[ptype == 3, .N, keyby = .(p_roi_once, p_actsprefernot, p_actsdk)]
-anl[ptype == 3, .N, keyby = .(p_ioi_once, p_actsprefernot, p_actsdk)]
-
-anl[ptype == 3 & !is.na(p_rai_once), .N, keyby = p_rai_once
-  ][, P := round(N / sum(N), 3)][]
-
-anl[ptype == 3 & !is.na(p_iai_once), .N, keyby = p_iai_once
-  ][, P := round(N / sum(N), 3)][]
-
-anl[ptype == 3 & !is.na(p_roi_once), .N, keyby = p_roi_once
-  ][, P := round(N / sum(N), 3)][]
-
-anl[ptype == 3 & !is.na(p_ioi_once), .N, keyby = p_ioi_once
-  ][, P := round(N / sum(N), 3)][]
-
-
-# %% CONDOM USE ---------------------------------------------
-
-ggplot(anl[ptype %in% 1:2]) +
-  geom_density(aes(x = insuai.prob, color = "insuai.prob")) +
-  geom_density(aes(x = recuai.prob, color = "recuai.prob")) +
-  geom_density(aes(x = cond.prob, color = "cond.prob"), size = 1) +
-  facet_wrap(~ ptype) +
-  scale_color_colorblind() +
-  labs(
-    x = "probability of condom use",
-    title = "Main and casual partnerships"
-  )
-
-
-# %% MODELS --------------------------------------------------------------------
-
-## convert character vars to match epidemic model
-anhiv <- copy(an)
-
-anhiv[, ":="(
-  race.cat = as.numeric(as.factor(race.cat)),
-  age.grp = as.numeric(as.factor(age.grp))
-)]
-
-## HIV diagnosis status
-anhiv[, .N, .(hiv2, hiv3, hiv.ego)]
-anhiv[, .N, .(artnetstatus, artnetrcntrslt, artnetevrpos, hiv.ego)]
-
-### set unknown HIV status to missing for the HIV model only
-anhiv[hiv.ego == 2, hiv.ego := NA]
-anhiv[, .N, hiv.ego]
-
-### missing data weight numerator
-ipw.num.s1 <- anhiv[, sum(!is.na(hiv.ego)) / nrow(an)]
-ipw.num.s0 <- 1 - ipw.num.s1
-
-# missing data weight denominator model
-hivfit.cube.age <- glm(
-  !is.na(hiv.ego) ~ race.cat * age + I(age^2) + I(age^3),
-  family = binomial(),
-  data = anhiv
+fml_pieces_mc <- list(
+  contvars = contvars,
+  poly3 = paste0("poly(", contvars, ", 3)"),
+  poly2 = paste0("poly(", contvars, ", 2)"),
+  spline5k = paste0("rms::rcs(", contvars, ", mc_qts5$", contvars, ")"),
+  spline3k = paste0("rms::rcs(", contvars, ", mc_qts3$", contvars, ")")
 )
 
-hivfit.quad.age <- glm(
-  !is.na(hiv.ego) ~ race.cat * age + I(age^2),
-  family = binomial(),
-  data = anhiv
-)
-
-# cubic term for age gives lower AIC
-hivfit.quad.age$aic
-hivfit.cube.age$aic
-
-hiv.s1.pred <- predict(hivfit.cube.age, newdata = anhiv, type = "response")
-
-anhiv[, ":="(
-  ipw.num = ifelse(is.na(hiv.ego), ipw.num.s0, ipw.num.s1),
-  ipw.den = ifelse(is.na(hiv.ego), 1 - hiv.s1.pred, hiv.s1.pred)
-)][, ipsw := ipw.num / ipw.den]
-
-### check weights
-anhiv[!is.na(hiv.ego), summary(ipsw)]
-anhiv[!is.na(hiv.ego), sum(ipsw)]
-
-### run outcome model
-hivdes <- svydesign(
-  data = anhiv[!is.na(hiv.ego), .(id, hiv.ego, age, race.cat, ipsw)],
-  ids = ~id,
-  weights = ~ipsw
-)
-
-hiv.mod.cube.age <- svyglm(
-  hiv.ego ~ factor(race.cat) * age + I(age^2) + I(age^3),
-  family = binomial(),
-  design = hivdes
-)
-
-hiv.mod.quad.age <- svyglm(
-  hiv.ego ~ factor(race.cat) + age + I(age^2),
-  family = binomial(),
-  design = hivdes
-)
-
-# quadratic term for age gives lower AIC
-hiv.mod.quad.age$aic
-hiv.mod.cube.age$aic
-
-summary(hiv.mod.quad.age)
-
-# compare results of complete case analysis with IPW
-cc.hiv.quad <- glm(
-  hiv.ego ~ factor(race.cat) + age + I(age^2),
-  family = binomial(),
-  data = anhiv
-)
-
-summary(cc.hiv.quad)
-
-data.table(
-  complete_cases = coef(cc.hiv.quad),
-  ipw = coef(hiv.mod.quad.age)
-)
-
-pred.hiv.df <- as.data.table(
-  expand.grid(race.cat = 1:4, age = 18:65)
-)
-
-pred.hiv.df2 <- data.table(
-  race.cat = pred.hiv.df$race.cat,
-  age = pred.hiv.df$age,
-  ccpreds.hiv = predict(
-    cc.hiv.quad,
-    newdata = pred.hiv.df,
-    type = "response"
+fml_pieces_otp <- list(
+  contvars = contvars[-4],
+  poly3 = paste0("poly(", contvars[-4], ", 3)"),
+  poly2 = paste0("poly(", contvars[-4], ", 2)"),
+  spline5k = paste0(
+    "rms::rcs(", contvars[-4], ", otp_qts5$", contvars[-4], ")"
   ),
-  ipwpreds.hiv = predict(
-    hiv.mod.quad.age,
-    newdata = pred.hiv.df,
-    type = "response"
-  )
+  spline3k = paste0("rms::rcs(", contvars[-4], ", otp_qts3$", contvars[-4], ")")
 )
 
-ggplot(pred.hiv.df2, aes(x = age, color = factor(race.cat))) +
-  geom_line(aes(y = ccpreds.hiv, linetype = "CC")) +
-  geom_line(aes(y = ipwpreds.hiv, linetype = "IPW")) +
-  labs(y = "prediction") +
-  ggtitle("HIV status") +
-  scale_color_colorblind() +
-  theme_tufte()
+base_fml <- "~ factor(race.combo) + factor(hiv.concord) + any.prep"
+base_fml_mc <- paste(base_fml, "+ ptype")
 
-hiv.mod <- hiv.mod.quad.age
-
-
-## %% SEX ACT MODEL REUSABLES --------------------------------------------------
-
-anl[ptype == 1, summary(ai.rate)]
-anl[ptype == 2, summary(ai.rate)]
-
-anl.newvars <- copy(anl)
-
-anl.newvars[p_race.cat == "", p_race.cat := NA]
-
-anl.newvars <- anl.newvars[, ":="(
-  race.i = as.numeric(as.factor(ego.race.cat)),
-  race.j = as.numeric(as.factor(p_race.cat)),
-  age.i = ego.age,
-  age.j = p_age_imputed,
-  diag.status.i = ego.hiv,
-  diag.status.j = p_hiv2
-)]
-
-# Check race/eth factor coding
-anl.newvars[, .N, keyby = .(ego.race.cat, race.i)]
-anl.newvars[, .N, keyby = .(p_race.cat, race.j)]
-
-
-# Subset to ongoing main and casual partnerships (18 missing).
-# Name variables according to use in epidemic simulation modules.
-maincas <- anl.newvars[ptype %in% 1:2 & p_ongoing_ind == 1, .(
-  ai.rate,
-  oi.rate,
-  cond.prob,
-  race.i,
-  age.i,
-  diag.status.i,
-  race.j,
-  age.j,
-  diag.status.j,
-  abs_sqrt_agediff,
-  ptype,
-  durat_wks
-)]
-
-
-plot(density(maincas$ai.rate * 52, na.rm = TRUE))
-summary(maincas$ai.rate * 52)
-
-plot(density(log(maincas$ai.rate * 52), na.rm = TRUE))
-boxplot(maincas[(ai.rate * 52) < 3000, ai.rate * 52])
-
-plot(density(maincas$oi.rate * 52, na.rm = TRUE))
-summary(maincas$oi.rate * 52)
-
-
-# Model formulas
-
-ai.outcome <- "floor(ai.rate * 52)"
-ai.log.outcome <- "log(ai.rate * 52)"
-
-oi.outcome <- "floor(oi.rate * 52)"
-oi.log.outcome <- "log(oi.rate * 52)"
-
-base.fml <-
-  "factor(race.i) +
-   factor(race.j) +
-   age.i +
-   age.j +
-   abs_sqrt_agediff +
-   factor(ptype) +
-   factor(diag.status.i) +
-   factor(diag.status.j) +
-   durat_wks"
-
-poly.fml <- . ~ . -
-   I(age.i^2) + I(age.i^3) +
-   I(age.j^2) + I(age.j^3) +
-   I(abs_sqrt_agediff^2) + I(abs_sqrt_agediff^3) +
-   I(durat_wks^2) + I(durat_wks^3)
-
-spline.fml <- . ~ . -
-  rcs(age.i) +
-  rcs(age.j) +
-  rcs(abs_sqrt_agediff) +
-  rcs(durat_wks)
-
-
-## %% ANAL SEX ACT MODEL -------------------------------------------------------
-
-# NOTE: See Harrell /Regression Modeling Strategies/ for recommendation re:
-#       backward selection.
-
-
-#### Negative binomial, pick between base model and polynomials
-base.fit.ai.nb <- glm.nb(
-  as.formula(paste(ai.outcome, "~", base.fml)),
-  data = maincas
-)
-
-poly.fit.ai.nb <- update(base.fit.ai.nb, poly.fml)
-
-nb.ai.stepaic <- stepAIC(
-  poly.fit.ai.nb,
-  direction = "backward",
-  scope = list(
-    upper = poly.fit.ai.nb,
-    lower = base.fit.ai.nb
-  )
-)
-
-#### Negative binomial, pick between base model and spline
-spline.fit.ai.nb <- update(base.fit.ai.nb, spline.fml)
-
-nb.ai.stepaic2 <- stepAIC(
-  spline.fit.ai.nb,
-  direction = "backward",
-  scope = list(
-    upper = spline.fit.ai.nb,
-    lower = base.fit.ai.nb
-  )
-)
-
-#### Poisson, pick between base and polynomial model
-base.fit.ai.pois <- glm(
-  as.formula(paste(ai.outcome, "~", base.fml)),
-  data = maincas,
-  family = poisson()
-)
-
-poly.fit.ai.pois <- update(base.fit.ai.pois, poly.fml)
-
-pois.ai.stepaic <- stepAIC(
-  poly.fit.ai.pois,
-  direction = "backward",
-  scope = list(
-    upper = poly.fit.ai.pois,
-    lower = base.fit.ai.pois
-  )
-)
-
-#### Poisson, pick between base model and spline
-spline.fit.ai.pois <- update(base.fit.ai.pois, spline.fml)
-
-pois.ai.stepaic2 <- stepAIC(
-  spline.fit.ai.pois,
-  direction = "backward",
-  scope = list(
-    upper = spline.fit.ai.pois,
-    lower = base.fit.ai.pois
-  )
-)
-
-#### Gaussian with transformed outcome, base vs. polynomial model
-base.fit.ai.loglm <- glm(
-  as.formula(paste(ai.log.outcome, "~", base.fml)),
-  data = maincas,
-  family = gaussian
-)
-
-poly.fit.ai.loglm <- update(base.fit.ai.loglm, poly.fml)
-
-loglm.ai.stepaic <- stepAIC(
-  poly.fit.ai.loglm,
-  direction = "backward",
-  scope = list(
-    upper = poly.fit.ai.loglm,
-    lower = base.fit.ai.loglm
-  )
-)
-
-spline.fit.ai.loglm <- update(base.fit.ai.loglm, spline.fml)
-
-loglm.ai.stepaic2 <- stepAIC(
-  spline.fit.ai.loglm,
-  direction = "backward",
-  scope = list(
-    upper = spline.fit.ai.loglm,
-    lower = base.fit.ai.loglm
-  )
-)
-
-ai.modlist <- list(
-  nb_polyAIC_selected      = nb.ai.stepaic,
-  nb_splineAIC_selected    = nb.ai.stepaic2,
-  pois_polyAIC_selected    = pois.ai.stepaic,
-  pois_splineAIC_selected  = pois.ai.stepaic2,
-  loglm_polyAIC_selected   = loglm.ai.stepaic,
-  loglm_splineAIC_selected = loglm.ai.stepaic2
-)
-
-## Plot residuals
-par(mfrow = c(3, 2))
-for (i in seq_along(ai.modlist)) {
-  hist(resid(ai.modlist[[i]]), main = names(ai.modlist[i]), xlab = "residuals")
+build_fml <- function(base, addons) {
+  paste0(base, " + ", paste(addons, collapse = " + "))
 }
 
-## Plot simulated responses
-s.ai <- list()
+fml_mc_upper <- sapply(
+  fml_pieces_mc, . %>% build_fml(base = base_fml_mc, addons = .)
+)
 
-par(mfrow = c(3, 2))
-for (i in seq_along(ai.modlist)) {
-  s.ai[[i]] <- unlist(simulate(ai.modlist[[i]], seed = 2000, type = "response"))
+fml_otp_upper <- sapply(
+  fml_pieces_otp, . %>% build_fml(base = base_fml, addons = .)
+)
 
-  if (grepl("^loglm", names(ai.modlist[i]))) {
-    s.ai[[i]] <- exp(s.ai[[i]])
+fml_mc_upper
+fml_otp_upper
+
+make_lower_fmls <- function(fml_list) {
+  sp <- unlist(str_split(fml_list, " \\+ "))
+  lowfml <- paste(sp[grepl("race|age\\.", sp)], collapse = " + ")
+  lowfml
+}
+
+fml_mc_lower <- sapply(fml_mc_upper, make_lower_fmls)
+fml_otp_lower <- sapply(fml_otp_upper, make_lower_fmls)
+
+fml_mc_lower
+fml_otp_lower
+
+fml_mc <- mapply(
+  FUN = function(x, y) list(x, y),
+  x = fml_mc_upper,
+  y = fml_mc_lower,
+  SIMPLIFY = FALSE
+)
+
+fml_otp <- mapply(
+  FUN = function(x, y) list(x, y),
+  x = fml_otp_upper,
+  y = fml_otp_lower,
+  SIMPLIFY = FALSE
+)
+
+fml_mc
+fml_otp
+
+## This function calculates the mean AIC value for each best-fitting model
+## selected by stepwise selection. The model with the lowest AIC will be chosen.
+get_AIC <- function(fitlist) {
+  sapply(fitlist, function(x) {
+    mean(sapply(x$analyses, AIC))
+  })
+}
+
+## This function tabulates the number of times predictors are chosen in the
+## backwards selection procedure across imputed datasets.
+count_votes <- function(models) {
+  # models = the analyses item from a mira object (MICE package)
+  lapply(models$analyses, formula) %>%
+  lapply(., terms) %>%
+  lapply(., labels) %>%
+  unlist %>%
+  table
+}
+
+## This function modifies an existing model object to create a new object that
+## stores pooled coefficient estimates from multiply imputed datasets. These
+## exported ojbects should ONLY be used with the predict() function, as other
+## model components (e.g., AIC, theta, R) ARE NOT updated.
+export_pooled <- function(fits, ests) {
+  fit <- fits$analyses[[1]]
+  coef <- ests$pooled$estimate
+
+  fit$coefficients <- coef
+  names(fit$coefficients) <- ests$pooled$term
+
+  fit
+}
+
+
+################################################################################
+                 ## STI TESTING FREQUENCY - NON-IMPUTED DATA ##
+################################################################################
+
+## NOTE: Only a few respondents were missing STI testing rate after data
+##       cleaning. Don't need to use the imputed datasets.
+
+## Subset.
+dsti <- an[, .(id, race.string = race.cat, age, stitest_perweek_all)]
+setkey(dsti, "id")
+
+setnames(dsti, c("stitest_perweek_all"), c("stitest_perweek"))
+
+dsti[, race.cat := match(race.string, c("black", "hispanic", "other", "white"))]
+dsti[, .N, keyby = .(race.string, race.cat)]
+dsti[, stitest.52 := floor(stitest_perweek * 52)]
+
+## EDA.
+dsti[!is.na(stitest.52), .(mean = mean(stitest.52), var = var(stitest.52))]
+dsti[
+  !is.na(stitest.52) & stitest.52 > 0,
+  .(mean = mean(stitest.52), var = var(stitest.52))
+]
+
+ggplot(dsti, aes(x = stitest.52)) +
+  geom_histogram(color = "white")
+
+ggplot(dsti, aes(x = factor(race.cat), y = stitest.52)) +
+  geom_boxplot()
+
+set.seed(1971)
+ggplot(dsti, aes(x = age, y = stitest.52)) +
+  geom_point(position = "jitter", alpha = 0.3) +
+  stat_smooth()
+
+## Models. Fit a zero-inflated Poisson model for yearly STI rate.
+fit_stitest_5k <- zeroinfl(
+  stitest.52 ~ factor(race.cat) + rms::rcs(age, 5),
+  data = dsti,
+  x = TRUE
+)
+
+fit_stitest_3k <- zeroinfl(
+  stitest.52 ~ factor(race.cat) + rms::rcs(age, 3),
+  data = dsti,
+  x = TRUE
+)
+
+sapply(list(fit_stitest_5k, fit_stitest_3k), AIC)
+
+summary(fit_stitest_5k)
+
+pred_stitest <- as.data.table(expand.grid(
+  race.cat = unique(dsti$race.cat),
+  age = unique(dsti$age)
+))
+
+setkeyv(pred_stitest, c("race.cat", "age"))
+
+pred_stitest[, ":="(
+  pred_rate = predict(
+    fit_stitest_5k, newdata = pred_stitest, type = "response"
+  ),
+  pred_zero = predict(fit_stitest_5k, newdata = pred_stitest, type = "zero"),
+  pred_pois = predict(fit_stitest_5k, newdata = pred_stitest, type = "count")
+)]
+
+psti <- melt(
+  pred_stitest,
+  measure.vars = c("pred_rate", "pred_zero", "pred_pois"),
+  variable.name = "pred_type",
+  value.name = "pred_val"
+  )
+
+ggplot(psti, aes(x = age, y = pred_val)) +
+  geom_line(aes(color = factor(race.cat)), size = 1.5) +
+  scale_color_viridis_d(option = "magma", end = 0.8) +
+  facet_wrap(~ pred_type, scales = "free")
+
+
+################################################################################
+                ## ANAL SEX ACT RATES, MAIN/CASUAL - IMPUTED DATA ##
+################################################################################
+
+## EDA. (Uses the first imputed dataset)
+dmc <- mcdt[.imp == 1]
+
+hist(dmc$ai.rate.52)
+hist(sqrt(dmc$ai.rate.52))
+hist(dmc$ai.rate.52^(1 / 3))
+
+dmc[, air52sqrt := sqrt(ai.rate.52)]
+dmc[, air52cbrt := ai.rate.52^(1 / 3)]
+
+## NOTE Cube root makes the yearly anal sex act rate variable approximately
+##      Poisson-distributed (but semi-continuous, so use Gamma family).
+dmc[, .(
+  mean.sqrt = mean(air52sqrt),
+  var.sqrt = var(air52sqrt),
+  mean.cbrt = mean(air52cbrt),
+  var.cbrt = var(air52cbrt)
+)]
+
+ggplot(dmc, aes(x = age.i, y = age.j)) +
+  geom_point(
+    aes(color = air52cbrt),
+    position = "jitter"
+  ) +
+  stat_smooth()
+
+ggplot(dmc, aes(x = abs_sqrt_agediff, y = air52cbrt)) +
+  geom_density_2d_filled() +
+  geom_point(
+    alpha = 0.4,
+    size = 0.7,
+    position = "jitter",
+    color = "white"
+  ) +
+  stat_smooth() +
+  scale_fill_viridis_d(option = "magma")
+
+ggplot(dmc, aes(y = factor(race.combo), x = air52cbrt)) +
+  geom_density_ridges()
+
+ggplot(dmc, aes(y = factor(hiv.concord), x = air52cbrt)) +
+  geom_density_ridges()
+
+ggplot(dmc, aes(x = air52cbrt)) +
+  geom_histogram(color = "white") +
+  facet_wrap(~any.prep, ncol = 1)
+
+
+################################################################################
+                        ## MODEL SELECTION FUNCTIONS ##
+################################################################################
+
+select_model <- function(impobj, fml, outcome,
+                         glmselect = c("negbin", "logit"), threshold = 10) {
+
+  if (glmselect == "negbin") {
+    fits <- lapply(fml, function(x) {
+      expr <- expression(
+        f1 <- glm.nb(
+          as.formula(paste(outcome, x[[1]])),
+          model = FALSE,
+          y = FALSE
+        ),
+        f2 <- stepAIC(
+          f1,
+          scope = list(lower = x[[2]], upper = formula(f1)),
+          direction = "backward"
+        )
+      )
+
+      fit <- with(impobj, expr)
+      fit
+    })
   }
 
-  hist(s.ai[[i]] / 52, main = names(ai.modlist[i]), xlab = "simulated (n = 1)")
+  if (glmselect == "logit") {
+    fits <- lapply(fml, function(x) {
+      expr <- expression(
+        f1 <- glm(
+          as.formula(paste(outcome, x[[1]])),
+          family = binomial,
+          model = FALSE,
+          y = FALSE
+        ),
+        f2 <- stepAIC(
+          f1,
+          scope = list(lower = x[[2]], upper = formula(f1)),
+          direction = "backward")
+      )
+
+      fit <- with(impobj, expr)
+      fit
+    })
+  }
+
+  majority_votes <- lapply(fits, function(x) {
+    v <- count_votes(x)
+    names(v)[v > threshold]
+  })
+
+  bestfits <- lapply(majority_votes, function(x, gs = glmselect) {
+
+    if (gs == "negbin") {
+      imp <- with(
+        impobj,
+        glm.nb(
+          as.formula(paste(outcome, "~", paste(x, collapse = " + "))),
+          model = FALSE,
+          y = FALSE
+        )
+      )
+    }
+
+    if (gs == "logit") {
+      imp <- with(
+        impobj,
+        glm(
+          as.formula(paste(outcome, "~", paste(x, collapse = " + "))),
+          model = FALSE,
+          y = FALSE,
+          family = binomial
+        ))
+    }
+
+    imp
+  })
+
+  aics <- sort(get_AIC(bestfits))
+  winner <- names(aics)[aics == min(aics)]
+  pooled <- pool(bestfits[[winner]])
+
+  fit_out <- export_pooled(bestfits[[winner]], pooled)
+
+  ## Before we save epistats, need workaround to prevent saveRDS from inflating
+  ## the file size (makes a huge .Rds object).
+  ##
+  ## Solutions at:
+  ## stackoverflow.com/questions/42230920/saverds-inflating-size-of-object
+  ## blogs.oracle.com/r/is-the-size-of-your-lm-model-causing-you-headaches
+  fit_out$fitted.values <- NULL
+  fit_out$data <- NULL
+  attr(fit_out$terms, ".Environment") <- NULL
+  attr(fit_out$formula, ".Environment") <- NULL
+
+  if (glmselect == "negbin") {
+    thetas <- unlist(lapply(bestfits[[winner]]$analyses, . %>% .$theta))
+    theta <- mean(thetas)
+  }
+
+  out <- list(
+    stepfits = fits,
+    majority_votes = majority_votes,
+    bestfits = bestfits,
+    AIC = aics,
+    winner = winner,
+    pooled = pooled,
+    fit_out = fit_out
+  )
+
+  if (exists("theta")) out <- c(out, list(theta = theta))
+  out
 }
 
-names(s.ai) <- names(ai.modlist)
+## This function checks that the pooled fit object generates a different
+## prediction than one of the individual fit objects in an imputed data set.
+check_pooled_fit <- function(selmod, pred_df) {
 
-sapply(s.ai, function(x) {
-  transf <- round(x / 52, 3)
-  summary(transf)
-})
+  fit1 <- with(selmod, bestfits[[winner]]$analyses[[1]])
+  fit2 <- selmod$fit_out
+  attr(fit2$terms, ".Environment") <- globalenv()
 
-# Compare models on AIC
-ai.aic <- sapply(ai.modlist, AIC)
+  pred1 <- predict(fit1, pred_df, type = "response")
+  pred2 <- predict(fit2, pred_df, type = "response")
 
-# View summary for selected model
-selected.ai.mod <- names(ai.aic)[ai.aic == min(ai.aic)]
-summary(ai.modlist[[selected.ai.mod]])
-
-
-## %% ORAL ACTS MODEL ----------------------------------------------------------
-
-#### Pick between base (main effects) and polynomial model
-base.fit.oi.nb <- glm.nb(
-  as.formula(paste(oi.outcome, "~", base.fml)),
-  data = maincas
-)
-
-poly.fit.oi.nb <- update(base.fit.oi.nb, poly.fml)
-
-nb.oi.stepaic <- stepAIC(
-  poly.fit.oi.nb,
-  direction = "backward",
-  scope = list(
-    upper = poly.fit.oi.nb,
-    lower = base.fit.oi.nb
-  )
-)
-
-#### Pick between base (main effects) and spline model
-spline.fit.oi.nb <- update(base.fit.oi.nb, spline.fml)
-
-nb.oi.stepaic2 <- stepAIC(
-  spline.fit.oi.nb,
-  direction = "backward",
-  scope = list(
-    upper = spline.fit.oi.nb,
-    lower = base.fit.oi.nb
-  )
-)
-
-#### Poisson, pick between base and polynomial model
-base.fit.oi.pois <- glm(
-  as.formula(paste(oi.outcome, "~", base.fml)),
-  data = maincas,
-  family = poisson()
-)
-
-poly.fit.oi.pois <- update(base.fit.oi.pois, poly.fml)
-
-pois.oi.stepaic <- stepAIC(
-  poly.fit.oi.pois,
-  direction = "backward",
-  scope = list(
-    upper = poly.fit.oi.pois,
-    lower = base.fit.oi.pois
-  )
-)
-
-#### Poisson, pick between base model and spline
-spline.fit.oi.pois <- update(base.fit.oi.pois, spline.fml)
-
-pois.oi.stepaic2 <- stepAIC(
-  spline.fit.oi.pois,
-  direction = "backward",
-  scope = list(
-    upper = spline.fit.oi.pois,
-    lower = base.fit.oi.pois
-  )
-)
-
-#### Gaussian model with log-transformed outcome
-
-# Two records have weekly oral sex rate estimate of 0. Set to 0.001 for
-# log-transformation.
-
-maincas[oi.rate == 0, oi.rate := 0.001]
-
-base.fit.oi.loglm <- glm(
-  as.formula(paste(oi.log.outcome, "~", base.fml)),
-  data = maincas,
-  family = gaussian
-)
-
-poly.fit.oi.loglm <- update(base.fit.oi.loglm, poly.fml)
-
-loglm.oi.stepaic <- stepAIC(
-  poly.fit.oi.loglm,
-  direction = "backward",
-  scope = list(
-    upper = poly.fit.oi.loglm,
-    lower = base.fit.oi.loglm
-  )
-)
-
-spline.fit.oi.loglm <- update(base.fit.oi.loglm, spline.fml)
-
-loglm.oi.stepaic2 <- stepAIC(
-  spline.fit.oi.loglm,
-  direction = "backward",
-  scope = list(
-    upper = spline.fit.oi.loglm,
-    lower = base.fit.oi.loglm
-  )
-)
-
-## Compare and select models
-
-oi.modlist <- list(
-  nb_polyAIC_selected      = nb.oi.stepaic,
-  nb_splineAIC_selected    = nb.oi.stepaic2,
-  pois_polyAIC_selected    = pois.oi.stepaic,
-  pois_splineAIC_selected  = pois.oi.stepaic2,
-  loglm_polyAIC_selected   = loglm.oi.stepaic,
-  loglm_splineAIC_selected = loglm.oi.stepaic2
-)
-
-## Plot residuals
-par(mfrow = c(3, 2))
-for (i in seq_along(oi.modlist)) {
-  hist(resid(oi.modlist[[i]]), main = names(oi.modlist[i]), xlab = "residuals")
+  list(pred_single_fit = unname(pred1), pred_pooled_fit = unname(pred2))
 }
-
-## Plot simulated responses
-s.oi <- list()
-
-par(mfrow = c(3, 2))
-for (i in seq_along(oi.modlist)) {
-  s.oi[[i]] <- unlist(simulate(oi.modlist[[i]], seed = 2000, type = "response"))
-  if (grepl("^loglm", names(oi.modlist[i]))) s.oi[[i]] <- exp(s.oi[[i]])
-
-  hist(s.oi[[i]] / 52, main = names(oi.modlist[i]), xlab = "simulated (n = 1)")
-}
-
-## Compare oral act models
-names(s.oi) <- names(oi.modlist)
-
-sapply(s.oi, function(x) {
-  transf <- x / 52
-  summary(transf)
-})
-
-## Summary of selected model
-oi.aic <- sapply(oi.modlist, AIC)
-selected.oi.mod <- names(oi.aic)[oi.aic == min(oi.aic)]
-summary(oi.modlist[[selected.oi.mod]])
-
-
-## %% CONDOM MODELS ------------------------------------------------------------
-
-#### Pick between base (main effects) and polynomial model
-base.fit.cp <- glm(
-  as.formula(paste("cond.prob", "~", base.fml)),
-  data = maincas,
-  family = binomial
-)
-
-poly.fit.cp <- update(base.fit.cp, poly.fml)
-
-spline.fit.cp <- update(base.fit.cp, spline.fml)
-
-gamk40.fit.cp <- gam(
-  cond.prob ~
-    factor(race.i) +
-    factor(race.j) +
-    s(age.i, k = 40) +
-    s(age.j, k = 40) +
-    s(abs_sqrt_agediff, k = 40) +
-    s(durat_wks, k = 40) +
-    factor(diag.status.i) +
-    factor(diag.status.j) +
-    factor(ptype),
-  data = maincas,
-  family = binomial
-)
-
-gamk50.fit.cp <- gam(
-  cond.prob ~
-    factor(race.i) +
-    factor(race.j) +
-    s(age.i, k = 50) +
-    s(age.j, k = 50) +
-    s(abs_sqrt_agediff, k = 50) +
-    s(durat_wks, k = 50) +
-    factor(diag.status.i) +
-    factor(diag.status.j) +
-    factor(ptype),
-  data = maincas,
-  family = binomial
-)
-
-cp.modlist <- list(
-  cp.mod.quad = base.fit.cp,
-  cp.mod.cubic = poly.fit.cp,
-  cp.mod.spline = spline.fit.cp,
-  cp.mod.gamk40 = gamk40.fit.cp,
-  cp.mod.gamk50 = gamk50.fit.cp
-)
-
-# Restricted cubic spline model has lowest AIC
-cp.aic <- sapply(setNames(cp.modlist, names(cp.modlist)), AIC)
-selected.cp.mod <- names(cp.aic)[cp.aic == min(cp.aic)]
-summary(cp.modlist[[selected.cp.mod]])
 
 
 ################################################################################
-## ONE-TIME PARTNERSHIPS ##
+                 ## ANAL ACT RATES, MAIN/CAUSAL PARTNERSHIPS ##
 ################################################################################
 
-otp <- anl.newvars[ptype == 3][, .(
-  id, pid, pid_unique,
-  race.i, race.j, age.i, age.j,
-  p_iai_once, p_rai_once,
-  p_ioi_once, p_roi_once,
-  p_insuai_once, p_recuai_once,
-  abs_sqrt_agediff
-)]
+ai52 <- select_model(imp_mc, fml_mc, "ai.rate.52", "negbin")
 
-head(otp)
-nrow(otp)
+## Confirm that replacement coefficients are used correctly with predict().
+pred_ai52 <- data.table(
+  ptype = 2,
+  race.combo = 11,
+  age.i = 45,
+  age.j = 30,
+  abs_sqrt_agediff = abs(sqrt(45) - sqrt(30)),
+  hiv.concord = 3,
+  durat_wks = 30
+)
 
-otp[, .N, keyby = p_iai_once]
-otp[, .N, keyby = p_rai_once]
-otp[, .N, keyby = .(p_iai_once, p_rai_once)]
-otp[, .N, keyby = .(p_ioi_once, p_roi_once)]
-otp[, .N, keyby = .(p_insuai_once, p_recuai_once)]
+## Prediction from model fit to first imputation
+check_pooled_fit(ai52, pred_ai52)
 
-sapply(otp, function(x) sum(is.na(x)) / nrow(otp))
 
-## Create multinomial outcome
-## (1 = ego insertive only, 2 = ego receptive only, 3 = both acts)
-otp[, ":="(
-  ai.acts = p_iai_once + p_rai_once,
-  oi.acts = p_ioi_once + p_roi_once
-)]
+################################################################################
+                   ## CONDOM USE, MAIN/CASUAL PARTNERSHIPS ##
+################################################################################
 
-otp[, .N, keyby = ai.acts]
-otp[, .N, keyby = oi.acts]
+cond_mc <- select_model(imp_mc, fml_mc, outcome = "cond.prob", "logit")
 
-otp[, .N, keyby = .(p_iai_once, p_rai_once, ai.acts)]
-otp[, .N, keyby = .(p_ioi_once, p_roi_once, oi.acts)]
+pred_condmc <- data.table(
+  ptype = 1,
+  race.combo = 23,
+  hiv.concord = 2,
+  age.i = 23,
+  age.j = 21,
+  any.prep = 0,
+  durat_wks = 4
+)
 
-otp[, .N, keyby = .(p_iai_once, p_rai_once, p_insuai_once, p_recuai_once)]
+## Create a model object to use with predict() in the epidemic model.
+## USE ***ONLY*** FOR THAT PURPOSE!
+check_pooled_fit(cond_mc, pred_condmc)
 
+
+################################################################################
+                 ## SEX ACT PROBABILITIES, ONE-TIME CONTACTS ##
+################################################################################
+
+ai_once <- select_model(imp_otp, fml_otp, outcome = "ai_once", "logit")
+
+pred_aionce <- data.table(
+  race.combo = 11,
+  age.i = 45,
+  age.j = 60,
+  any.prep = 0,
+  hiv.concord = 2
+)
+
+## Create a model object to use with predict() in the epidemic model.
+## USE ***ONLY*** FOR THAT PURPOSE!
+check_pooled_fit(ai_once, pred_aionce)
+
+
+################################################################################
+                 ## CONDOM USE, ONE-TIME CONTACTS ##
+################################################################################
+
+cond_otp <- select_model(imp_otp, fml_otp, outcome = "cond.prob", "logit")
+
+pred_condotp <- data.table(
+  race.combo = 14,
+  age.i = 30,
+  age.j = 34,
+  abs_sqrt_agediff = abs(sqrt(30) - sqrt(34)),
+  any.prep = 1,
+  hiv.concord = 3
+)
+
+## Create a model object to use with predict() in the epidemic model.
+## USE ***ONLY*** FOR THAT PURPOSE!
+check_pooled_fit(cond_otp, pred_condotp)
+
+
+################################################################################
+             ## ORAL ACT PROBABILITIES, MAIN/CASUAL PARTNERSHIPS ##
+################################################################################
+
+oi52 <- select_model(imp_mc, fml_mc, "oi.rate.52", "negbin")
+
+pred_oi52 <- data.table(
+  race.combo = 14,
+  age.i = 18,
+  age.j = 20,
+  abs_sqrt_agediff = abs(sqrt(18) - sqrt(20)),
+  any.prep = 0,
+  durat_wks = 50,
+  ptype = 2
+)
+
+## Create a model object to use with predict() in the epidemic model.
+## USE ***ONLY*** FOR THAT PURPOSE!
+check_pooled_fit(oi52, pred_oi52)
+
+
+################################################################################
+                ## ORAL ACT PROBABILITIES, ONE-TIME CONTACTS ##
+################################################################################
+
+oi_once <- select_model(imp_otp, fml_otp, "oi_once", "logit")
+
+pred_oionce <- data.table(
+  race.combo = 11,
+  age.i = 45,
+  age.j = 37,
+  abs_sqrt_agediff = abs(sqrt(45) - sqrt(37)),
+  hiv.concord = 1,
+  any.prep = 1
+)
+
+## Create a model object to use with predict() in the epidemic model.
+## USE ***ONLY*** FOR THAT PURPOSE!
+check_pooled_fit(oi_once, pred_oionce)
+
+
+################################################################################
+                    ## HIV DIAGNOSIS STATUS MODEL (SEED) ##
+################################################################################
+
+## Select a model with which to seed the population. Because HIV diagnosis
+## status in the seeded population is used to calculate network target
+## statistics, we should ## aim for an accurate enough seed diagnosis prevalence
+## so that those network statistics are well-estimated.
+
+hiv_matchrole <- anl[, .(id, role.class = ego.anal.role)]
+hiv_matchrole[role.class == "", role.class := NA]
+
+hiv_mr <- dcast(
+  hiv_matchrole,
+  id ~ role.class,
+  function(x) as.numeric(length(x) > 0)
+)
+
+hiv_mr[, role.class := fcase(
+           Versatile == 1 | (Insertive + Receptive > 1), "Versatile",
+           Insertive == 1 & Receptive == 0, "Insertive",
+           Receptive == 1 & Insertive == 0, "Receptive",
+           default = NA
+         )]
+
+hiv_mr[, .N, role.class]
+hiv_mr[, .N, keyby = .(role.class, Insertive, Receptive, Versatile)]
+
+hivdt <- an[
+  hiv_mr[, .(id, role.class)],
+  on = "id"
+][, .(id, hiv2, race.cat, age, age.grp, role.class)]
+
+hivdt[, .(N = .N, pr_hiv = mean(hiv2)), .(role.class, race.cat, age)] %>%
+  ggplot(aes(x = age, y = pr_hiv, color = race.cat, fill = race.cat)) +
+  stat_smooth(se = FALSE) +
+  geom_point(aes(size = N), shape = 21, color = "white") +
+  facet_wrap(~role.class) +
+  scale_fill_viridis_d() +
+  scale_color_viridis_d()
+
+hiv_mod_5k <- glm(
+  hiv2 ~ race.cat + rms::rcs(age, 5) + factor(role.class),
+  data = hivdt,
+  family = binomial
+)
+
+hiv_mod_3k <- glm(
+  hiv2 ~ race.cat + rms::rcs(age, 3) + factor(role.class),
+  data = hivdt,
+  family = binomial
+)
+
+hiv_mod_poly3 <- glm(
+  hiv2 ~ race.cat + poly(age, 3) + factor(role.class),
+  data = hivdt,
+  family = binomial
+)
+
+hiv_mod_poly2 <- glm(
+  hiv2 ~ race.cat + poly(age, 2) + factor(role.class),
+  data = hivdt,
+  family = binomial
+)
+
+hiv_mod_linear <- glm(
+  hiv2 ~ race.cat + age + factor(role.class),
+  data = hivdt,
+  family = binomial
+)
+
+hiv_mod_cat <- glm(
+  hiv2 ~ race.cat + factor(age.grp) + factor(role.class),
+  data = hivdt,
+  family = binomial
+)
+
+hivmods <- list(
+  hiv_mod_5k = hiv_mod_5k,
+  hiv_mod_3k = hiv_mod_3k,
+  hiv_mod_poly3 = hiv_mod_poly3,
+  hiv_mod_poly2 = hiv_mod_poly2,
+  hiv_mod_linear = hiv_mod_linear,
+  hiv_mod_cat = hiv_mod_cat
+)
+
+## Running into probable sparsity issues with 5-knot model. Compare against
+## a 3-knot model.
+
+## Based on likelihood ratio tests, poly2 seems to be the most parsimonious.
+lrtest(hiv_mod_5k, hiv_mod_3k)
+lrtest(hiv_mod_3k, hiv_mod_poly3)
+lrtest(hiv_mod_poly3, hiv_mod_poly2)
+lrtest(hiv_mod_poly2, hiv_mod_linear)
+lrtest(hiv_mod_linear, hiv_mod_cat)
+
+## AIC selects the 3-knot model (poly2 a close second)
+sapply(hivmods, AIC, simplify = FALSE)
+
+## To avoid having to export the knot quantiles, and because the models
+## performed similarly, choose the poly2 model.
+
+pred_hiv <- data.table(
+  expand.grid(
+    race.cat = unique(hivdt$race.cat),
+    age = unique(hivdt$age),
+    role.class = c("Versatile", "Receptive", "Insertive")
+  )
+)
+
+setorder(pred_hiv, "age")
+
+pred_hiv[, predhiv := predict(hiv_mod_poly2, newdata = pred_hiv, type = "response")]
+pred_hiv
+
+ggplot(pred_hiv, aes(x = age, y = predhiv, color = race.cat)) +
+  geom_line() +
+  facet_wrap(~ role.class) +
+  scale_color_viridis_d(option = "magma", end = 0.9)
 
 
 ################################################################################
@@ -846,20 +705,18 @@ otp[, .N, keyby = .(p_iai_once, p_rai_once, p_insuai_once, p_recuai_once)]
 
 epistats <- list()
 
-epistats$ai.acts.mod <- ai.modlist[[selected.ai.mod]]
-epistats$oi.acts.mod <- oi.modlist[[selected.oi.mod]]
-epistats$cp.mod <- cp.modlist[[selected.cp.mod]]
-epistats$hiv.mod <- hiv.mod
+epistats$ai.acts.mc <- ai52$fit_out
+epistats$ai.acts.mc.theta <- ai52$theta
+epistats$ai.acts.oo <- ai_once$fit_out
+epistats$mc_qts <- list(q5 = mc_qts5, q3 = mc_qts3)
+epistats$oi.acts.mc <- oi52$fit_out
+epistats$oi.acts.mc.theta <- oi52$theta
+epistats$oi.acts.oo <- oi_once$fit_out
+epistats$otp_qts <- list(q5 = otp_qts5, q3 = otp_qts3)
+epistats$cond.mc <- cond_mc$fit_out
+epistats$cond.oo <- cond_otp$fit_out
+epistats$stitest <- fit_stitest_5k
+epistats$hiv.mod <- hiv_mod_poly2
+
 
 saveRDS(epistats, file.path("netstats", "epistats.Rds"))
-
-
-# debug versions of models without spline terms
-epistats_debug <- list()
-
-epistats_debug$ai.acts.mod <- ai.modlist[["loglm_polyAIC_selected"]]
-epistats_debug$oi.acts.mod <- oi.modlist[["loglm_polyAIC_selected"]]
-epistats_debug$cp.mod <- cp.modlist[["cp.mod.cubic"]]
-epistats_debug$hiv.mod <- hiv.mod
-
-saveRDS(epistats_debug, file.path("netstats", "epistats_debug.Rds"))
