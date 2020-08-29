@@ -2,3 +2,7 @@
 .Rhistory
 *.csv
 .Rproj.user
+/.history
+/scratch.R
+/scratch.org
+/model-todo.org
