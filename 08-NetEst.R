@@ -1,4 +1,6 @@
-# %% PACKAGES ------------------------------------------------------------------
+################################################################################
+                                 ## PACKAGES ##
+################################################################################
 
 pacman::p_load(
   magrittr,
@@ -10,13 +12,17 @@ pacman::p_load(
 netstats <- readRDS(here::here("netstats", "netstats.Rds"))
 
 
-# %% TECHNICAL PARAMETERS ------------------------------------------------------
+################################################################################
+                           ## TECHNICAL PARAMETERS ##
+################################################################################
 
 mcmc.maxiterations <- 500
 use_ncores <- 6
 
 
-# %% NETWORK ESTIMATION --------------------------------------------------------
+################################################################################
+                            ## NETWORK ESTIMATION ##
+################################################################################
 
 suppressMessages(library("EpiModelHIV"))
 
@@ -40,29 +46,35 @@ nw <- set.vertex.attribute(nw, "role.class", netstats$attr$role.class)
 #   2 for receptive-only agents (coded as 1 in role.class)
 
 
-# %% MAIN PARTNERSHIPS ---------------------------------------------------------
+################################################################################
+                            ## MAIN PARTNERSHIPS ##
+################################################################################
 
 main_formation_full <-
   ~ edges +
-  nodefactor("race", levels = NULL) +
-  nodefactor("age.grp", levels = NULL) +
-  nodefactor("deg.casl", levels = NULL) +
-  degrange(from = 3) +
-  concurrent +
-  nodematch("race") +
-  nodematch("age.grp") +
-  nodematch("role.class", levels = c(1, 2))
+    nodefactor("race", levels = NULL) +
+    nodefactor("age.grp", levels = NULL) +
+    nodefactor("deg.casl", levels = NULL) +
+    nodefactor("diag.status", levels = NULL) +
+    degrange(from = 3) +
+    concurrent +
+    nodematch("race") +
+    nodematch("age.grp") +
+    nodematch("diag.status") +
+    nodematch("role.class", levels = c(1, 2))
 
 main_formation <-
   ~ edges +
-  nodefactor("race", levels = I(2:4)) +
-  nodefactor("age.grp", levels = I(2:5)) +
-  nodefactor("deg.casl", levels = I(1:5)) +
-  degrange(from = 3) +
-  concurrent +
-  nodematch("race") +
-  nodematch("age.grp") +
-  nodematch("role.class", diff = TRUE, levels = c(1, 2))
+    nodefactor("race", levels = I(2:4)) +
+    nodefactor("age.grp", levels = I(2:5)) +
+    nodefactor("deg.casl", levels = I(1:5)) +
+    nodefactor("diag.status", levels = I(1)) +
+    degrange(from = 3) +
+    concurrent +
+    nodematch("race") +
+    nodematch("age.grp") +
+    nodematch("diag.status") +
+    nodematch("role.class", diff = TRUE, levels = c(1, 2))
 
 netstats_main <-
   with(netstats$netmain,
@@ -70,10 +82,12 @@ netstats_main <-
       nodefactor_race = nodefactor_race[-1],
       nodefactor_age.grp = nodefactor_age.grp[-1],
       nodefactor_degcasl = nodefactor_degcasl[-1],
+      nodefactor_diag.status = nodefactor_diagstatus[-1],
       degrange = 0,
       concurrent = concurrent,
       nodematch_race = nodematch_race,
       nodematch_age.grp = nodematch_age.grp,
+      nodematch_diag.status = nodematch_diagstatus,
       nodematch_ai.role = c(0, 0)
 ))
 
@@ -107,37 +121,43 @@ dx_main <- netdx(
   nwstats.formula = main_formation_full
 )
 
+## NOTE: Need to burn in for a long time to assess duration match
+## will be biased downward for early time steps.
 plot(dx_main, qnts = 0.95)
-
-# need to burn in for a long time to assess duration match
-# will be biased downward for early time steps
 plot(dx_main, type = "duration")
+
 print(dx_main)
 
 
-# %% CASUAL PARTNERSHIPS -------------------------------------------------------
+################################################################################
+                           ## CASUAL PARTNERSHIPS ##
+################################################################################
 
 casl_formation_full <-
   ~ edges +
-  nodefactor("race", levels = NULL) +
-  nodefactor("age.grp", levels = NULL) +
-  nodefactor("deg.main", levels = NULL) +
-  degrange(from = 6) +
-  concurrent +
-  nodematch("race", levels = NULL) +
-  nodematch("age.grp") +
-  nodematch("role.class", levels = c(1, 2))
+    nodefactor("race", levels = NULL) +
+    nodefactor("age.grp", levels = NULL) +
+    nodefactor("deg.main", levels = NULL) +
+    nodefactor("diag.status", levels = NULL) +
+    degrange(from = 6) +
+    concurrent +
+    nodematch("race", levels = NULL) +
+    nodematch("age.grp") +
+    nodematch("diag.status") +
+    nodematch("role.class", levels = c(1, 2))
 
 casl_formation <-
   ~ edges +
-  nodefactor("race", levels = I(2:4)) +
-  nodefactor("age.grp", levels = I(2:5)) +
-  nodefactor("deg.main", levels = I(1:2)) +
-  degrange(from = 6) +
-  concurrent +
-  nodematch("race") +
-  nodematch("age.grp") +
-  nodematch("role.class", diff = TRUE, levels = c(1, 2))
+    nodefactor("race", levels = I(2:4)) +
+    nodefactor("age.grp", levels = I(2:5)) +
+    nodefactor("deg.main", levels = I(1:2)) +
+    nodefactor("diag.status", level = I(1)) +
+    degrange(from = 6) +
+    concurrent +
+    nodematch("race") +
+    nodematch("age.grp") +
+    nodematch("diag.status") +
+    nodematch("role.class", diff = TRUE, levels = c(1, 2))
 
 netstats_casl <-
   with(netstats$netcasl,
@@ -145,10 +165,12 @@ netstats_casl <-
       nodefactor_race = nodefactor_race[-1],
       nodefactor_age.grp = nodefactor_age.grp[-1],
       nodefactor_degmain = nodefactor_degmain[-1],
+      nodefactor_diag.status = nodefactor_diagstatus[-1],
       degrange = 0,
       concurrent = concurrent,
       nodematch_race = nodematch_race,
       nodematch_age.grp = nodematch_age.grp,
+      nodematch_diag.status = nodematch_diagstatus,
       nodematch_ai.role = c(0, 0)
 ))
 
@@ -182,27 +204,34 @@ dx_casl <- netdx(
   nwstats.formula = casl_formation_full
 )
 
+## NOTE: Need to burn in for a long time to assess duration match
+## will be biased downward for early time steps.
 plot(dx_casl, qnts = 0.95)
+plot(dx_casl, "duration")
 print(dx_casl)
 
 
-# %% ONE-TIME PARTNERSHIPS -----------------------------------------------------
+################################################################################
+                          ## ONE-TIME PARTNERSHIPS ##
+################################################################################
 
 inst_formation_full <-
   ~ edges +
-  nodefactor("race", levels = NULL) +
-  nodefactor("age.grp", levels = NULL) +
-  nodefactor("deg.main", levels = NULL) +
-  nodefactor("deg.casl", levels = NULL) +
-  nodematch("role.class", levels = c(1, 2))
+    nodefactor("race", levels = NULL) +
+    nodefactor("age.grp", levels = NULL) +
+    nodefactor("deg.main", levels = NULL) +
+    nodefactor("deg.casl", levels = NULL) +
+    nodefactor("diag.status", levels = NULL) +
+    nodematch("role.class", levels = c(1, 2))
 
 inst_formation <-
   ~ edges +
-  nodefactor("race", levels = I(2:4)) +
-  nodefactor("age.grp", levels = I(2:5)) +
-  nodefactor("deg.main", levels = I(1:2)) +
-  nodefactor("deg.casl", levels = I(1:5)) +
-  nodematch("role.class", diff = TRUE, levels = c(1, 2))
+    nodefactor("race", levels = I(2:4)) +
+    nodefactor("age.grp", levels = I(2:5)) +
+    nodefactor("deg.main", levels = I(1:2)) +
+    nodefactor("deg.casl", levels = I(1:5)) +
+    nodefactor("diag.status", levels = I(1)) +
+    nodematch("role.class", diff = TRUE, levels = c(1, 2))
 
 netstats_inst <-
   with(netstats$netinst,
@@ -211,6 +240,7 @@ netstats_inst <-
       nodefactor_age.grp = nodefactor_age.grp[-1],
       nodefactor_degmain = nodefactor_degmain[-1],
       nodefactor_degcasl = nodefactor_degcasl[-1],
+      nodefactor_diagstatus = nodefactor_diagstatus[-1],
       nodefactor_ai.role = c(0, 0)
 ))
 

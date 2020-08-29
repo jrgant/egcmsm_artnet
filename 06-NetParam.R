@@ -8,18 +8,31 @@ pacman::p_load(
   ciTools,
   dplyr,
   stringr,
-  lubridate
+  lubridate,
+  mice,
+  MASS,
+  rms,
+  nnet
 )
 
 # function to calculate number of unique levels in a variable
 unql <- function(data) length(unique(data))
 
+# path to private data
+pd_path <- Sys.getenv("ARTNET_PATH")
+
 # import cleaned wide dataset
-an <- fread(paste0(Sys.getenv("ARTNET_PATH"), "/artnet-wide-cleaned.csv"))
-anl <- fread(paste0(Sys.getenv("ARTNET_PATH"), "/artnet-long-cleaned.csv"))
+an <- fread(file.path(pd_path, "/artnet-wide-cleaned.csv"))
+anl <- fread(file.path(pd_path, "/artnet-long-cleaned.csv"))
+
+# import imputed datasets
+imp_mc <- readRDS(file.path(pd_path, "artnet-imputed-mc-augmented.Rds"))
+imp_otp <- readRDS(file.path(pd_path, "artnet-imputed-otp-augmented.Rds"))
 
 
-# %% MAIN AND CAUSAL PARTNERSHIPS ----------------------------------------------
+################################################################################
+                         ## SET UP NON-IMPUTED DATA ##
+################################################################################
 
 egos <- length(unique(anl$id))
 
@@ -43,7 +56,7 @@ ong_cols <- c(
   "ptype", "psubtype",
   "p_startyyyy", "p_startyyyydk", "p_startmm", "p_startdt",
   "durat_days", "durat_wks",
-  "ego.race.cat", "ego.age.grp", "ego.hiv",
+  "ego.race.cat", "ego.age.grp", "ego.age", "ego.hiv", "hiv2",
   "ego.anal.role", "hiv.concord"
 )
 
@@ -72,10 +85,12 @@ ong_ptype_cts <- dcast(
 print(ong_ptype_cts)
 
 
-# %% PARTNERSHIP DURATIONS -----------------------------------------------------
+################################################################################
+                          ## PARTNERSHIP DURATIONS ##
+################################################################################
 
 maincas_ong[, .(
-  id, pid, ego.race.cat, ego.age.grp, ego.hiv,
+  id, pid, ego.race.cat, ego.age, ego.age.grp, ego.hiv,
   ptype, p_startyyyy, p_startmm, p_startdt, sub_date,
   durat_days, durat_wks
 )]
@@ -87,18 +102,89 @@ ggplot(maincas_ong, aes(x = durat_wks)) +
   facet_wrap(~ ptype, nrow = 2) +
   theme_base()
 
+# 18 missing partnership durations (among ongoing)
+maincas_ong[, .(
+  mn = mean(durat_wks, na.rm = TRUE),
+  var = var(durat_wks, na.rm = TRUE),
+  missing_durat = sum(is.na(durat_wks)),
+  pct_missing_durat = sum(is.na(durat_wks)) / .N
+), ptype]
+
 fit_main_dur <- maincas_ong[
   ptype == 1,
-  glm(durat_wks ~ ego.race.cat + ego.age.grp + ego.hiv, family = "quasipoisson")
+  glm.nb(durat_wks ~ ego.race.cat + factor(ego.age.grp) + factor(hiv2))
 ]
+
+fit_main_dur_ix <- update(
+  fit_main_dur, . ~ + ego.race.cat * factor(ego.age.grp) + factor(hiv2)
+)
+
+## No support for interaction between race and age.
+summary(fit_main_dur_ix)
+
+pmdur <- as.data.table(
+  expand.grid(
+    ego.race.cat = unique(maincas_ong$ego.race.cat),
+    hiv2 = c(0, 1),
+    ego.age.grp = 1:5
+  )
+)
+
+pmdur[, pred := predict(fit_main_dur, newdata = pmdur, type = "response")]
+
+pmdur %>%
+  ggplot(aes(x = ego.age.grp, y = pred, color = ego.race.cat)) +
+  geom_line(size = 1) +
+  geom_point(shape = 21, fill = "white", size = 5) +
+  facet_wrap(
+    ~ hiv2,
+    labeller = labeller(c("HIV undiagnosed" = 0, "HIV diagnosed" = 1))
+  ) +
+  scale_color_viridis_d(option = "magma", end = 0.9) +
+  ggtitle("Predicted ongoing partnership durations") +
+  labs(subtitle = "Main partnerships") +
+  theme_clean()
+
+
+## Casual partnerships
 
 fit_casl_dur <- maincas_ong[
   ptype == 2,
-  glm(durat_wks ~ ego.race.cat + ego.age.grp + ego.hiv, family = "quasipoisson")
+  glm.nb(durat_wks ~ ego.race.cat + factor(ego.age.grp) + factor(hiv2))
 ]
 
+## No support for interaction between race and age.
+fit_casl_dur_ix <- update(
+  fit_casl_dur, . ~ ego.race.cat * factor(ego.age.grp) + factor(hiv2)
+)
 
-# %% CALCULATE MAIN AND CASUAL DEGREE ------------------------------------------
+summary(fit_casl_dur_ix)
+
+pcdur <- as.data.table(
+  expand.grid(
+    ego.race.cat = unique(maincas_ong$ego.race.cat),
+    hiv2 = c(0, 1),
+    ego.age.grp = 1:5
+  )
+)
+
+pcdur[, pred := predict(fit_casl_dur, newdata = pcdur, type = "response")]
+
+pcdur %>%
+  ggplot(aes(x = ego.age.grp, y = pred, color = ego.race.cat)) +
+  geom_line(size = 1) +
+  geom_point(shape = 21, fill = "white", size = 5) +
+  facet_wrap(~ hiv2) +
+  scale_color_viridis_d(option = "magma", end = 0.9) +
+  ggtitle("Predicted ongoing partnership durations") +
+  labs(subtitle = "Casual partnerships") +
+  theme_clean()
+
+
+
+################################################################################
+                    ## MAKE DATASET TO CALCULATE DEGREES ##
+################################################################################
 
 # Main and causal partnerships (ongoing)
 
@@ -231,408 +317,423 @@ pcols <- c(
 )
 
 
-# %% PARTNERSHIP REUSABLES -----------------------------------------------------
+################################################################################
+                                ## RACE MATCH ##
+################################################################################
 
-## These objects are set up to be used in various predictions from the
-## statistical models specified later in the script.
+mcdat <- as.data.table(complete(imp_mc, action = "long", include = TRUE))
+str(mcdat)
 
-# store unique levels for categorical variables
-race_unq <- data.table(race.cat = sort(unique(deg_data$race.cat)))
-age.grp_unq <- data.table(age.grp = sort(unique(deg_data$age.grp)))
+age_breaks.i <- c(15, 25, 35, 45, 55, 66)
+age_breaks.j <- c(14, 25, 35, 45, 55, 81)
 
-main_degt2_unq <- data.table(
-  degmain_trunc2 = sort(unique(deg_data$degmain_trunc2))
+mcdat[, ":="(
+  samerace = ifelse(race.i == race.j, 1, 0),
+  age.grp.i = as.numeric(cut(age.i, age_breaks.i, right = FALSE)),
+  age.grp.j = as.numeric(cut(age.j, age_breaks.j, right = FALSE)),
+  serodisc = ifelse(hiv.concord == 2, 1, 0)
+)][, sameage := ifelse(age.grp.i == age.grp.j, 1, 0)]
+
+mcdat[.imp > 0, .N, keyby = .(race.combo, samerace)]
+mcdat[.imp > 0, .(min = min(age.i), max = max(age.i)), keyby = age.grp.i]
+mcdat[.imp > 0, .(min = min(age.j), max = max(age.j)), keyby = age.grp.j]
+mcdat[.imp > 0, .N, keyby = .(sameage, age.grp.i, age.grp.j)]
+mcdat[.imp > 0, .N, keyby = .(hiv.concord, serodisc)]
+
+imp_mc <- as.mids(mcdat)
+
+fit_racematch <- with(
+  imp_mc,
+  glm(
+    samerace ~ ptype + race.i + factor(age.grp.i) + factor(diag.status.i),
+    family = binomial
+  )
 )
 
-casual_deg_unq <- data.table(degcasl = sort(unique(deg_data$degcasl)))
+pool_racematch <- pool(fit_racematch)
+summary(pool_racematch)
 
-# labels for ciTools::add_ci output
-cilabs <- c("ll95", "ul95")
+## Save pooled estimates to a model object. USE ONLY FOR PREDICTING
+## PROBABILITY OF SAME-RACE PARTNERSHIPS!!
+fit_racematch_out <- fit_racematch$analyses[[1]]
+fit_racematch_out$coefficients <- pool_racematch$pooled$estimate
+names(fit_racematch_out$coefficients) <- pool_racematch$pooled$term
 
-# set up tables for predictor level combinations
-ra_grid <- expand.grid(
-  race.cat = unlist(race_unq),
-  age.grp = unlist(age.grp_unq)
+prmatch <- data.table(
+  expand.grid(
+    ptype = 1:2,
+    age.grp.i = 1:5,
+    race.i = unique(mcdat$race.i),
+    diag.status.i = 0:1
+  )
 )
 
-rah_grid <- expand.grid(
-  ego.race.cat = unlist(race_unq),
-  ego.age.grp = unlist(age.grp_unq),
-  ego.hiv = c(0, 1)
+prmatch[, pred := predict(
+            fit_racematch_out,
+            newdata = prmatch,
+            type = "response"
+          )]
+
+prmatch %>%
+  ggplot(
+    aes(x = age.grp.i, y = pred,
+        color = race.i,
+        linetype = factor(diag.status.i))
+  ) +
+  geom_line(size = 1) +
+  geom_point(shape = 21, size = 5, fill = "white") +
+  facet_wrap(~ ptype) +
+  scale_color_viridis_d(option = "magma", end = 0.9) +
+  theme_clean()
+
+
+################################################################################
+                            ## AGE GROUP MATCHING ##
+################################################################################
+
+fit_agematch <- with(
+  imp_mc,
+  glm(
+    sameage ~ ptype + race.i + factor(age.grp.i) + factor(diag.status.i),
+    family = binomial
+  )
 )
 
-rac_grid <- expand.grid(
-  race.cat = unlist(race_unq),
-  age.grp = unlist(age.grp_unq),
-  degcasl = unlist(casual_deg_unq)
+pool_agematch <- pool(fit_agematch)
+summary(pool_agematch)
+
+fit_agematch_out <- fit_agematch$analyses[[1]]
+fit_agematch_out$coefficients <- pool_agematch$pooled$estimate
+names(fit_agematch_out$coefficients) <- pool_agematch$pooled$term
+
+pamatch <- as.data.table(
+  expand.grid(
+    ptype = 1:2,
+    race.i = unique(mcdat$race.i),
+    age.grp.i = 1:5,
+    diag.status.i = 0:1
+  )
 )
 
-rach_grid <- expand.grid(
-  race.cat = unlist(race_unq),
-  age.grp = unlist(age.grp_unq),
-  degcasl = unlist(casual_deg_unq),
-  hiv.ego = c(0, 1)
+pamatch[, pred := predict(
+            fit_agematch_out,
+            newdata = pamatch,
+            type = "response"
+          )]
+
+pamatch %>%
+  ggplot(aes(x = age.grp.i, y = pred, color = race.i)) +
+  geom_line(aes(linetype = factor(diag.status.i))) +
+  geom_point(shape = 21, size = 5, fill = "white") +
+  facet_wrap(~ ptype) +
+  ggtitle("Predicted probability of same-age partnerships") +
+  scale_color_viridis_d(option = "magma", end = 0.9) +
+  theme_clean()
+
+
+################################################################################
+                             ## HIV CONCORDANCE  ##
+################################################################################
+
+fit_serodisc <- with(
+  imp_mc,
+  glm(
+    serodisc ~ ptype + race.i + age.grp.i + factor(diag.status.i),
+    family = binomial
+  )
 )
 
-ram_grid <- expand.grid(
-  race.cat = unlist(race_unq),
-  age.grp = unlist(age.grp_unq),
-  degmain_trunc2 = unlist(main_degt2_unq)
+pool_serodisc <- pool(fit_serodisc)
+summary(pool_serodisc)
+
+fit_serodisc_out <- fit_serodisc$analyses[[1]]
+fit_serodisc_out$coefficients <- pool_serodisc$pooled$estimate
+names(fit_serodisc_out$coefficients) <- pool_serodisc$pooled$term
+
+pserodisc <- as.data.table(
+  expand.grid(
+    ptype = 1:2,
+    race.i = unique(mcdat$race.i),
+    age.grp.i = 1:5,
+    diag.status.i = 0:1
+  )
 )
 
-ramh_grid <- expand.grid(
-  race.cat = unlist(race_unq),
-  age.grp = unlist(age.grp_unq),
-  degmain_trunc2 = unlist(main_degt2_unq),
-  hiv.ego = c(0, 1)
-)
+pserodisc[, pred := predict(
+              fit_serodisc_out,
+              newdata = pserodisc,
+              type = "response"
+            )]
 
-racm_grid <- expand.grid(
-  race.cat = unlist(race_unq),
-  age.grp = unlist(age.grp_unq),
-  degcasl = unlist(casual_deg_unq),
-  degmain_trunc2 = unlist(main_degt2_unq)
-)
-
-racmh_grid <- expand.grid(
-  race.cat = unlist(race_unq),
-  age.grp = unlist(age.grp_unq),
-  degcasl = unlist(casual_deg_unq),
-  degmain_trunc2 = unlist(main_degt2_unq),
-  hiv.ego = c(0, 1)
-)
+pserodisc %>%
+  ggplot(aes(x = age.grp.i, y = pred, color = race.i)) +
+  geom_line(aes(linetype = factor(diag.status.i))) +
+  geom_point(shape = 21, size = 5, fill = "white") +
+  facet_wrap(~ ptype) +
+  ggtitle("Predicted probability of HIV-serodiscordant partnership") +
+  scale_color_viridis_d(option = "magma", end = 0.9) +
+  theme_clean()
 
 
-# %% RACE MIXING ---------------------------------------------------------------
 
-mp <- anl[ptype == 1 & p_ongoing_ind == 1, ..pcols]
-cp <- anl[ptype == 2 & p_ongoing_ind == 1, ..pcols]
-
-# Mixing matrix, main partnership
-
-mp_racemix <- mp[, ctable(ego.race.cat, p_race.cat, prop = "n", useNA = "no")]
-mp_mixmat <- with(mp, round(prop.table(table(ego.race.cat, p_race.cat)), 3))
-
-mp_racemix
-mp_mixmat
-
-# Mixing matrix, casual partnership
-
-cp_racemix <- cp[, ctable(ego.race.cat, p_race.cat, prop = "n", useNA = "no")]
-cp_mixmat <- with(cp, round(prop.table(table(ego.race.cat, p_race.cat)), 3))
-
-cp_racemix
-cp_mixmat
-
-# Partner race probabilities, main partnerships
-
-mp_racematch <- mp[
-  !is.na(p_race.cat)
-  ][, samerace := ifelse(ego.race.cat == p_race.cat, 1, 0)
-  ][, .N, by = "samerace"
-  ][, P := round(N / sum(N), 4)][]
-
-# Partner race probabilities, casual partnerships
-
-cp_racematch <- cp[
-  !is.na(p_race.cat)
-  ][, samerace := ifelse(ego.race.cat == p_race.cat, 1, 0)
-  ][, .N, by = "samerace"
-  ][, P := round(N / sum(N), 4)][]
-
-
-# %% AGE MIXING ----------------------------------------------------------------
-
-# Mixing
-
-mp_agemix <- mp[
-  !is.na(p_age.grp)
-  ][, .N, keyby = .(ego.age.grp, p_age.grp)
-  ][, rowid := .I
-  ][, ":=" (
-    minage = min(ego.age.grp, p_age.grp),
-    maxage = max(ego.age.grp, p_age.grp)
-   ), by = rowid
-  ][, agecomb := paste0(minage, maxage)
-  ][, .(N = sum(N)), agecomb
-  ][, P := N / sum(N)]
-
-print(mp_agemix)
-sum(mp_agemix$P)
-
-cp_agemix <- cp[
-  !is.na(p_age.grp)
-  ][, .N, keyby = .(ego.age.grp, p_age.grp)
-  ][, rowid := .I
-  ][, ":=" (
-      minage = min(ego.age.grp, p_age.grp),
-      maxage = max(ego.age.grp, p_age.grp)
-   ), by = rowid
-  ][, agecomb := paste0(minage, maxage)
-  ][, .(N = sum(N)), agecomb
-  ][, P := N / sum(N)]
-
-print(cp_agemix)
-sum(cp_agemix$P)
-
-# Matching
-
-mp_age.grpmatch <- mp[
-  !is.na(p_age.grp)
-  ][, .N, keyby = .(ego.age.grp, p_age.grp)
-  ][, sameage := ifelse(ego.age.grp == p_age.grp, 1, 0)
-  ][, .(N = sum(N)), sameage
-  ][, P := round(N / sum(N), 4)]
-
-print(mp_age.grpmatch)
-
-cp_age.grpmatch <- cp[
-  !is.na(p_age.grp)
-  ][, .N, keyby = .(ego.age.grp, p_age.grp)
-  ][, sameage := ifelse(ego.age.grp == p_age.grp, 1, 0)
-  ][, .(N = sum(N)), sameage
-  ][, P := round(N / sum(N), 4)]
-
-print(cp_age.grpmatch)
-
-
-# %% HIV CONCORDANCE -----------------------------------------------------------
-
-mp_hivmix <- mp[!is.na(hiv.concord), .N, keyby = hiv.concord
-  ][, P := round(N / sum(N), 4)]
-
-cp_hivmix <- cp[!is.na(hiv.concord), .N, keyby = hiv.concord
-  ][, P := round(N / sum(N), 4)]
-
-mp_serodiscordant <- mp[
-  !is.na(hiv.concord), .N,
-  keyby = .(hiv.discord = hiv.concord == 3)
-  ][, P := round(N / sum(N), 4)][]
-
-cp_serodiscordant <- cp[
-  !is.na(hiv.concord), .N,
-  keyby = .(hiv.discord = hiv.concord == 3)
-][, P := round(N / sum(N), 4)][]
-
-
-# HIV serodiscordance, main partnerships
-
-hivc_dt <- maincas_ong[
-  deg_data, on = "id"
-  ][, .(id, pid, ego.race.cat, ego.age.grp, ego.hiv, ptype, hiv.concord)]
-
-# no support for ego.race.cat as a predictor
-# (CIs wide and almost centered around null)
-fit_main_serodisc <- glm(
-  I(hiv.concord == 3) ~ factor(ego.age.grp) + ego.hiv,
-  data = hivc_dt[ptype == 1],
-  family = binomial
-)
-
-summary(fit_main_serodisc)
-coef(fit_main_serodisc)
-confint(fit_main_serodisc)
-
-## pred_main_serodisc <- predict(
-##   fit_main_serodisc,
-##   newdata = rah_grid,
-##   type = "response"
-## )
-
-## pred_main_serodisc <- cbind(rah_grid, pred_main_serodisc)
-
-
-# HIV serodiscordance, casual partnerships
-
-# no support for ego.race.cat as a predictor
-# (CIs wide and almost centered around null)
-fit_casl_serodisc <- glm(
-  I(hiv.concord == 3) ~ factor(ego.age.grp) + ego.hiv,
-  data = hivc_dt[ptype == 2],
-  family = binomial
-)
-
-summary(fit_casl_serodisc)
-coef(fit_casl_serodisc)
-confint(fit_casl_serodisc)
-
-## pred_casl_serodisc <- predict(
-##   fit_casl_serodisc,
-##   newdata = rah_grid,
-##   type = "response"
-## )
-
-## pred_casl_serodisc <- cbind(rah_grid, pred_casl_serodisc)
-
-
-# %% EGO SEX ROLE --------------------------------------------------------------
-
-# TODO: Impute missing anal.sex.role
+################################################################################
+                               ## EGO SEX ROLE ##
+################################################################################
 
 # Overall (among ids with main or casual partnerships)
-
-mc_analrole <- dcast(
-  anl[ptype %in% 1:2],
-  id ~ ego.anal.role,
-  value.var = "ego.anal.role"
-)[, anal.sex.role := case_when(
-    Versatile > 0 | (Insertive == 1 & Receptive == 1) ~ "V",
-    Receptive > 0 & (Insertive == 0 & Versatile == 0) ~ "R",
-    Insertive > 0 & (Receptive == 0 & Versatile == 0) ~ "I",
-    TRUE ~ NA_character_
-  )]
-
-# about 11% missing, ego-wise
-mc_analrole[, .N, anal.sex.role][, P := N / sum(N)][]
-
-mc_analrole <- mc_analrole[!is.na(anal.sex.role),
-                           .N, anal.sex.role][, P := N / sum(N)]
-
-print(mc_analrole)
-
-
 # Main Partnerships
 
-# between 9-10% missing, partnership-wise
-table(is.na(mp$ego.anal.role))
-
+mp <- maincas_ong[ptype == 1]
+mp[ego.anal.role == "", ego.anal.role := "Missing"]
 mp_analrole <- dcast(
-  mp, id ~ ego.anal.role, value.var = "ego.anal.role"
-)[, anal.sex.role := case_when(
-    Versatile > 0 | (Insertive == 1 & Receptive == 1) ~ "V",
-    Receptive > 0 & (Insertive == 0 & Versatile == 0) ~ "R",
-    Insertive > 0 & (Receptive == 0 & Versatile == 0) ~ "I",
-    TRUE ~ NA_character_
+  mp,
+  id + ego.race.cat + ego.age.grp + ego.hiv ~ ego.anal.role
+)
+
+## Create a role class variable based on available responses.
+mp_analrole[, role.class := fcase(
+    Versatile > 0 | (Insertive == 1 & Receptive == 1), "Versatile",
+    Receptive > 0 & (Insertive == 0 & Versatile == 0), "Receptive",
+    Insertive > 0 & (Receptive == 0 & Versatile == 0), "Insertive",
+    default = NA_character_
   )]
 
-# about 9% missing, ego-wise
-mp_analrole[, .N, anal.sex.role][, P := N / sum(N)] %>% print
+mp_analrole[, .N, role.class][, p := N / sum(N)][]
+mp_analrole[, missing := ifelse(is.na(role.class), 1, 0)]
 
-mp_analrole <- mp_analrole[!is.na(anal.sex.role),
-                           .N, anal.sex.role][, P := N / sum(N)]
+ipsmod <- glm(
+  missing ~ ego.race.cat + factor(ego.age.grp) + ego.hiv,
+  data = mp_analrole,
+  family = binomial
+)
 
-print(mp_analrole)
+mp_analrole[, ips_den := predict(ipsmod, mp_analrole, type = "response")]
+mp_analrole[missing == 0, ips_den := 1 - ips_den]
+mp_analrole[,
+  ips_num := fcase(
+    missing == 1, sum(missing == 1) / nrow(mp_analrole),
+    missing == 0, 1 - (sum(missing == 1) / nrow(mp_analrole))
+  )]
+mp_analrole[, ipw := ips_num / ips_den]
+
+mp_analrole[, summary(ipw)]
+boxplot(mp_analrole$ipw)
+
+fit_mrole <- multinom(
+  role.class ~ ego.race.cat + factor(ego.age.grp),
+  data = mp_analrole
+)
+
+fit_mrole_ipw <- multinom(
+  role.class ~ ego.race.cat + factor(ego.age.grp),
+  weights = ipw,
+  data = mp_analrole
+)
+
+pmrole <- as.data.table(
+  expand.grid(
+    ego.race.cat = unique(mp_analrole$ego.race.cat),
+    ego.age.grp = 1:5
+  )
+)
+
+mrole_preds <- predict(fit_mrole, newdata = pmrole, type = "probs")
+mrole_preds_ipw <- predict(fit_mrole_ipw, newdata = pmrole, type = "probs")
+
+pmrole[, ":="(
+  Insertive = mrole_preds[, 1],
+  Receptive = mrole_preds[, 2],
+  Versatile = mrole_preds[, 3],
+  Insertive_ipw = mrole_preds_ipw[, 1],
+  Receptive_ipw = mrole_preds_ipw[, 2],
+  Versatile_ipw = mrole_preds_ipw[, 3]
+)]
+
+pmrole
+
+pmrole_melt <- melt(
+  pmrole,
+  id.vars = c("ego.race.cat", "ego.age.grp"),
+  measure.vars = c(
+    "Insertive", "Receptive", "Versatile",
+    "Insertive_ipw", "Receptive_ipw", "Versatile_ipw"
+  )
+)
+
+pmrole_melt[, ":="(
+  model = fcase(grepl("ipw", variable), "ipw", default = "cc"),
+  role.class = fcase(
+    grepl("Insertive", variable), "Insertive",
+    grepl("Receptive", variable), "Receptive",
+    grepl("Versatile", variable), "Versatile"
+  )
+)]
+
+pmrole_melt %>%
+  ggplot(aes(x = ego.age.grp, y = value, color = ego.race.cat)) +
+  geom_line(aes(linetype = model)) +
+  geom_point(shape = 21, size = 5, fill = "white") +
+  facet_wrap(~ role.class) +
+  ggtitle("Anal role class probabilities") +
+  labs(subtitle = "Main partnerships", y = "Membership probability") +
+  scale_color_viridis_d(option = "magma", end = 0.9) +
+  theme_clean()
 
 
 # Casual Partnerships
 
-# about 21% missing, partnership-wise
-table(is.na(cp$ego.anal.role))
-
+cp <- maincas_ong[ptype == 2]
+cp[ego.anal.role == "", ego.anal.role := "Missing"]
 cp_analrole <- dcast(
-  cp, id ~ ego.anal.role, value.var = "ego.anal.role"
-)[, anal.sex.role := case_when(
-    Versatile > 0 | (Insertive == 1 & Receptive == 1) ~ "V",
-    Receptive > 0 & (Insertive == 0 & Versatile == 0) ~ "R",
-    Insertive > 0 & (Receptive == 0 & Versatile == 0) ~ "I",
-    TRUE ~ NA_character_
+  cp,
+  id + ego.race.cat + ego.age.grp + ego.hiv ~ ego.anal.role
+)
+
+## Create a role class variable based on available responses.
+cp_analrole[, role.class := fcase(
+    Versatile > 0 | (Insertive == 1 & Receptive == 1), "Versatile",
+    Receptive > 0 & (Insertive == 0 & Versatile == 0), "Receptive",
+    Insertive > 0 & (Receptive == 0 & Versatile == 0), "Insertive",
+    default = NA_character_
   )]
 
-# about 16% missing, ego-wise
-cp_analrole[, .N, anal.sex.role][, P := N / sum(N)][]
+cp_analrole[, .N, role.class][, p := N / sum(N)][]
+cp_analrole[, missing := ifelse(is.na(role.class), 1, 0)]
 
-cp_analrole <- cp_analrole[!is.na(anal.sex.role),
-                           .N, anal.sex.role][, P := N / sum(N)]
+ipsmod <- glm(
+  missing ~ ego.race.cat + factor(ego.age.grp) + ego.hiv,
+  data = cp_analrole,
+  family = binomial
+)
 
-print(cp_analrole)
+cp_analrole[, ips_den := predict(ipsmod, cp_analrole, type = "response")]
+cp_analrole[missing == 0, ips_den := 1 - ips_den]
+cp_analrole[,
+  ips_num := fcase(
+    missing == 1, sum(missing == 1) / nrow(cp_analrole),
+    missing == 0, 1 - (sum(missing == 1) / nrow(cp_analrole))
+  )]
+cp_analrole[, ipw := ips_num / ips_den]
+
+cp_analrole[, summary(ipw)]
+boxplot(cp_analrole$ipw)
+
+fit_crole <- multinom(
+  role.class ~ ego.race.cat + factor(ego.age.grp),
+  data = cp_analrole
+)
+
+fit_crole_ipw <- multinom(
+  role.class ~ ego.race.cat + factor(ego.age.grp),
+  weights = ipw,
+  data = cp_analrole
+)
+
+pcrole <- as.data.table(
+  expand.grid(
+    ego.race.cat = unique(cp_analrole$ego.race.cat),
+    ego.age.grp = 1:5
+  )
+)
+
+crole_preds <- predict(fit_crole, newdata = pcrole, type = "probs")
+crole_preds_ipw <- predict(fit_crole_ipw, newdata = pcrole, type = "probs")
+
+pcrole[, ":="(
+  Insertive = crole_preds[, 1],
+  Receptive = crole_preds[, 2],
+  Versatile = crole_preds[, 3],
+  Insertive_ipw = crole_preds_ipw[, 1],
+  Receptive_ipw = crole_preds_ipw[, 2],
+  Versatile_ipw = crole_preds_ipw[, 3]
+)]
+
+pcrole
+
+pcrole_melt <- melt(
+  pcrole,
+  id.vars = c("ego.race.cat", "ego.age.grp"),
+  measure.vars = c(
+    "Insertive", "Receptive", "Versatile",
+    "Insertive_ipw", "Receptive_ipw", "Versatile_ipw"
+  )
+)
+
+pcrole_melt[, ":="(
+  model = fcase(grepl("ipw", variable), "ipw", default = "cc"),
+  role.class = fcase(
+    grepl("Insertive", variable), "Insertive",
+    grepl("Receptive", variable), "Receptive",
+    grepl("Versatile", variable), "Versatile"
+  )
+)]
+
+pcrole_melt %>%
+  ggplot(aes(x = ego.age.grp, y = value, color = ego.race.cat)) +
+  geom_line(aes(linetype = model)) +
+  geom_point(shape = 21, size = 5, fill = "white") +
+  facet_wrap(~ role.class) +
+  ggtitle("Anal role class probabilities") +
+  labs(subtitle = "Main partnerships", y = "Membership probability") +
+  scale_color_viridis_d(option = "magma", end = 0.9) +
+  theme_clean()
 
 
-# %% MAIN PARTNERSHIPS ---------------------------------------------------------
+################################################################################
+                  ## SEED PROBABILITIES, MAIN PARTNERSHIPS ##
+################################################################################
 
 ## ... PROBS FOR SEEDING MAIN DEGREE
 
 # main degree dummies
 main_bin <- names(deg_data)[grepl("main[0-2]{1}", names(deg_data))]
 
-# function to generate predictions
-predict_degree_prob <- function(yvar, xvar, dat, newdat) {
-  y <- yvar
-  x <- paste(xvar, collapse = "+")
-
-  fit <- glm(paste(y, "~", x), data = dat, family = "binomial")
-  preds <- predict(fit, newdat, type = "response")
-
-  as.data.table(cbind(newdat, preds, outcome = y))
-}
-
-# used to estimate the distribution of main degree
-# marginalized over race and age (used for seeding population)
-mainprob_by_ra <- lapply(main_bin, function(x) {
-  predict_degree_prob(
-    yvar = x,
-    xvar = c("race.cat", "factor(age.grp)"),
-    dat = deg_data,
-    newdat = ra_grid
-  )
-})
-
-
-## ... EXPECTED MAIN DEGREE (BY RACE, AGE, AND CASUAL DEGREE)
-deg_data[, class(degmain_trunc2)]
-deg_data[, degmain_trunc2 := relevel(degmain_trunc2)]
-
-fit_hiv_imp <- glm(
-  hiv.ego ~ factor(race.cat) + factor(age.grp) * factor(degcasl),
+## Because main degree will be seeded first, leave degcasl out. Seed casual
+## degree will be generated subsequently, conditional on demographics
+## and main degree.
+fit_mdeg <- multinom(
+  degmain_trunc2 ~ race.cat + factor(age.grp) + hiv.ego,
   data = deg_data
 )
 
+summary(fit_mdeg)
+coef(fit_mdeg)
+confint(fit_mdeg)
 
-boot_maindeg_mod <- function(data, bsamps) {
-  require(MASS)
-  require(nnet)
-
-  ind <- lapply(seq_len(bsamps), function(x) {
-    sample(seq_len(length(data)), length(data), replace = TRUE)
-  })
-
-  fits <- lapply(ind, function(x) {
-    currdat <- data[x,]
-
-    fit_init <- multinom(
-      factor(degmain_trunc2) ~
-        race.cat * factor(age.grp) * hiv.ego * factor(degcasl),
-      data = currdat
-    )
-
-    stepAIC(fit_init, direction = "backward")
-  })
-}
-
-boot_maindeg_mod(deg_data, 3)
-
-
-fit_mdeg_joint <- glm(
-  degmain_trunc2 ~ race.cat + factor(age.grp) + hiv.ego + factor(degcasl),
-  data = deg_data,
-  family = "quasipoisson"
+pmdeg <- as.data.table(
+  expand.grid(
+    race.cat = unique(deg_data$race.cat),
+    age.grp = 1:5,
+    hiv.ego = 0:1,
+    degcasl = unique(deg_data$degcasl)
+  )
 )
 
-summary(fit_mdeg_joint)
-coef(fit_mdeg_joint)
-confint(fit_mdeg_joint)
+mdeg_probs <- as.data.table(predict(fit_mdeg, newdata = pmdeg, type = "probs"))
+names(mdeg_probs) <- paste0("maindeg", 0:2)
+pmdeg <- cbind(pmdeg, mdeg_probs)
 
-pred_mdeg_joint <- predict(
-  fit_mdeg_joint,
-  newdata = rach_grid,
-  type = "response"
-)
+melt(pmdeg, measure.vars = c("maindeg0", "maindeg1", "maindeg2")) %>%
+  ggplot(aes(x = age.grp, y = value, color = race.cat)) +
+  geom_line(aes(linetype = factor(hiv.ego))) +
+  geom_point(shape = 21, size = 3, fill = "white") +
+  facet_wrap(~ factor(degcasl) + variable) +
+  scale_color_viridis_d(option = "magma", end = 0.9) +
+  theme_clean()
 
-pred_mdeg_joint <- cbind(rach_grid, pred_mdeg_joint)
-print(pred_mdeg_joint)
 
-
-# ... MAIN CONCURRENCY
+################################################################################
+                      ## CONCURRENCY, MAIN PARTNERSHIPS ##
+################################################################################
 
 # proportion of individuals with concurrent main partnerships
-# main_concurrent_prob <- deg_data[, mean(main_conc_ind)]
-# round(main_concurrent_prob, 3)
 
 deg_data[, .(id, race.cat, age.grp, degmain, degcasl, main_conc_ind)][]
 deg_data[, degcasl3 := ifelse(degcasl >= 3, 3, degcasl)]
 
 # sparse at degcasl > 3 (group for the target stat estimation)
 fit_main_concurrent <- glm(
-  main_conc_ind ~ race.cat + factor(age.grp) + hiv.ego + factor(degcasl3),
+  as.numeric(main_conc_ind) ~ race.cat + factor(age.grp) + hiv.ego + factor(degcasl3),
   family = "binomial",
   data = deg_data
 )
@@ -641,43 +742,10 @@ summary(fit_main_concurrent)
 coef(fit_main_concurrent)
 confint(fit_main_concurrent)
 
-## pred_main_concurrent <- predict(
-##   fit_main_concurrent,
-##   newdata = rach_grid,
-##   type = "response"
-## )
 
-## pred_main_concurrent <- cbind(rach_grid, pred_main_concurrent)
-
-
-# ... MAIN RELATIONSHIP DURATION
-
-# Set 10 partnership durations reported as 0 weeks to 1 (variable is integer)
-maincas_ong[ptype == 1 & durat_wks == 0, durat_wks := 1]
-
-# average duration (in weeks)
-fit_main_durat_wks <- glm(
-  log(durat_wks) ~ ego.race.cat + factor(ego.age.grp) + ego.hiv,
-  data = maincas_ong[ptype == 1],
-  family = gaussian
-)
-
-summary(fit_main_durat_wks)
-exp(coef(fit_main_concurrent))
-exp(confint(fit_main_concurrent))
-
-## pred_main_durat_wks <- exp(
-##   predict(
-##     fit_main_durat_wks,
-##     newdata = rah_grid,
-##     type = "response"
-##   )
-## )
-
-## pred_main_durat_wks <- cbind(rah_grid, pred_main_durat_wks)
-
-
-# %% CASUAL PARTNERSHIPS -------------------------------------------------------
+################################################################################
+                     ## SEED PROBABILITY, CASUAL DEGREE ##
+################################################################################
 
 ## ... PROBS FOR SEEDING CASUAL DEGREE
 
@@ -686,48 +754,52 @@ casl_bin <- names(deg_data)[grepl("^casl[0-5]{1}", names(deg_data))]
 
 # used to estimate the distribution of casual degree
 # marginalized over race and age (used for seeding population)
-caslprob_by_ra <- lapply(casl_bin, function(x) {
-  predict_degree_prob(
-    yvar = x,
-    xvar = c("race.cat", "factor(age.grp)"),
-    dat = deg_data,
-    newdat = ra_grid
-  )
-})
-
-print(caslprob_by_ra)
-
 
 ## ... EXPECTED CASL  DEGREE (BY RACE, AGE, HIV STATUS, AND MAIN DEGREE)
 
-fit_cdeg_joint <- glm(
+fit_cdeg <- multinom(
   degcasl ~ race.cat + factor(age.grp) + hiv.ego + factor(degmain_trunc2),
-  data = deg_data,
-  family = "quasipoisson"
+  data = deg_data
 )
 
-summary(fit_cdeg_joint)
-exp(coef(fit_cdeg_joint))
-exp(confint(fit_cdeg_joint))
+summary(fit_cdeg)
+confint(fit_cdeg)
 
-pred_cdeg_joint <- predict(
-  fit_cdeg_joint,
-  newdata = ramh_grid,
-  type = "response"
+pcdeg <- as.data.table(
+  expand.grid(
+    race.cat = unique(deg_data$race.cat),
+    age.grp = 1:5,
+    hiv.ego = 0:1,
+    degmain_trunc2 = 0:2
+  )
 )
 
-pred_cdeg_joint <- cbind(ramh_grid, pred_cdeg_joint)
-print(pred_cdeg_joint)
+cdeg_probs <- as.data.table(predict(fit_cdeg, newdata = pcdeg, type = "probs"))
+
+names(cdeg_probs) <- paste0("casldeg", 0:5)
+
+pcdeg <- cbind(pcdeg, cdeg_probs)
+
+melt(pcdeg, measure.vars = names(cdeg_probs)) %>%
+  ggplot(aes(x = age.grp, y = value, color = race.cat)) +
+  geom_line(aes(linetype = factor(hiv.ego))) +
+  geom_point(shape = 21, size = 5, fill = "white") +
+  facet_wrap(~ degmain_trunc2 + variable, ncol = 6) +
+  ggtitle("Casual degree probabilities") +
+  scale_color_viridis_d(option = "magma", end = 0.9) +
+  theme_clean()
 
 
-# ... CASUAL CONCURRENCY
+################################################################################
+                     ## CONCURRENCY, CASUAL PARTNERSHIPS ##
+################################################################################
 
 # proportion of individuals with concurrent casual partnerships
 # casl_concurrent_prob <- deg_data[, mean(casl_conc_ind)]
 # round(casl_concurrent_prob, 3)
 
 fit_casl_concurrent <- glm(
-  casl_conc_ind ~ race.cat + factor(age.grp) + hiv.ego + factor(degmain_trunc2),
+  as.numeric(casl_conc_ind) ~ race.cat + factor(age.grp) + hiv.ego + factor(degmain_trunc2),
   family = "binomial",
   data = deg_data
 )
@@ -736,75 +808,62 @@ summary(fit_casl_concurrent)
 coef(fit_casl_concurrent)
 confint(fit_casl_concurrent)
 
-## pred_casl_concurrent <- predict(
-##   fit_casl_concurrent,
-##   newdata = ramh_grid,
-##   type = "response"
-## )
 
-## pred_casl_concurrent <- cbind(ramh_grid, pred_casl_concurrent)
-## print(pred_casl_concurrent)
+################################################################################
+                 ## INSTANTANEOUS PARTNERSHIP FORMATION RATE ##
+################################################################################
 
-
-# ... CASUAL RELATIONSHIP DURATION
-
-# Set 10 partnership durations reported as 0 weeks to 1 (variable is integer)
-maincas_ong[ptype == 2 & durat_wks == 0, durat_wks := 1]
-
-# average duration (in weeks)
-fit_casl_durat_wks <- glm(
-  log(durat_wks) ~ ego.race.cat + factor(ego.age.grp) + ego.hiv,
-  data = maincas_ong[ptype == 2],
-  family = "gaussian"
+instvars <- c(
+  "id", "race.cat", "age", "hiv.ego",
+  "pnoa_12m", "m_mp12anum2", "m_mp12instanum2",
+  "m_mp12anum2_onepart", "part1once", "pn_ongoing"
 )
 
-summary(fit_casl_durat_wks)
-exp(coef(fit_casl_durat_wks))
-exp(confint(fit_casl_durat_wks))
+pinst_rate <- an[, ..instvars]
 
-## pred_casl_durat_wks <- exp(
-##   predict(
-##     fit_casl_durat_wks,
-##     newdata = rah_grid,
-##     type = "response"
-##   )
-## )
+setkey(pinst_rate, "id")
+sapply(pinst_rate, class)
 
-## pred_casl_durat_wks <- cbind(rah_grid, pred_casl_durat_wks)
+pinst_rate[,
+           gtonetime := max(
+             pn_ongoing, (m_mp12anum2 - m_mp12instanum2), na.rm = TRUE
+           ), id]
 
+pinst_rate[, ":="(
+  # calculate number of one-time partnerships as total oral/anal partners
+  # minus total anal partners with > 1 contact.
+  # NOTE: ARTNet didn't ask about one- or multi- oral sexual contacts.
+  pnoa_12m_onetime = fcase(
+    pnoa_12m == 0, as.integer(0),
+    pnoa_12m == 1 & part1once == 1, pnoa_12m,
+    pnoa_12m == 1 & part1once > 1, as.integer(0),
+    pnoa_12m > 1 & m_mp12anum2_onepart == 0, pnoa_12m,
+    pnoa_12m > 1 & !is.na(gtonetime), pnoa_12m - gtonetime
+  ),
+  # calculate percentage of oral-or-anal partnerships with whom respondent
+  # had anal sex
+  pnoa_12m_pct_anal = m_mp12anum2 / pnoa_12m
+  )]
 
-# %% ONE-TIME PARTNERSHIPS -----------------------------------------------------
+pinst_rate[, summary(pnoa_12m_pct_anal)]
+pinst_rate[, summary(pnoa_12m_onetime)]
+pinst_rate[, .N, .(pnoa_12m_onetime > pnoa_12m)]
 
-ponetime <- anl[
-  ptype == 3,
-  .(id, pid,
-    ego.age, ego.race.cat, ego.hiv,
-    p_age_imputed, p_race.cat,
-    p_rai_once, p_iai_once, p_roi_once, p_ioi_once,
-    ptype, psubtype, hiv.concord)
-    ]
+ggplot(pinst_rate[pnoa_12m > 0], aes(x = pnoa_12m - pnoa_12m_onetime)) +
+  geom_histogram(color = "white", fill = "firebrick", binwidth = 1) +
+  theme_clean()
 
-print(ponetime)
-ponetime[, .N, psubtype]
-
-ponetime <- anl[ptype == 3, .N, .(id, psubtype, ptype)]
-
-pinst_rate <- an[
-  order(id),
-  .(id, race.cat, age, hiv.ego, pnoa_12m, pna_12m, pno_12m)
-]
-
-# 19 missing
+# 34 missing
 mice::md.pattern(pinst_rate)
 
-pinst_rate[, inst_wkrate := pnoa_12m / 52]
+pinst_rate[, inst_wkrate := pnoa_12m_onetime / 52]
 
 pinst_rate <- pinst_rate[!is.na(inst_wkrate)]
 
-pinst_rate[, plot(density(pnoa_12m))]
-pinst_rate[, .(mean = mean(pnoa_12m), var = var(pnoa_12m))]
-
+pinst_rate[, plot(density(pnoa_12m_onetime))]
 pinst_rate[, plot(density(inst_wkrate))]
+
+pinst_rate[, .(mean = mean(pnoa_12m_onetime), var = var(pnoa_12m_onetime))]
 pinst_rate[, .(mean = mean(inst_wkrate), var = var(inst_wkrate))]
 
 # join deg_data and pinst_rate
@@ -812,36 +871,74 @@ pinst_rate <- deg_data[
   pinst_rate,
   .(id, age, age.grp, race.cat, hiv.ego,
     degmain_trunc2, degcasl,
-    inst_wkrate
- )]
+    pnoa_12m_onetime, inst_wkrate
+ ), on = "id"]
 
 print(pinst_rate)
 
 
 ## ... EXPECTED WEEKLY ONE-TIME RATE (BY RACE, AGE, HIV, & MAIN/CASUAL DEGREE)
 
-fit_inst_joint <- glm(
-  inst_wkrate ~
+fit_instrate <- glm.nb(
+  pnoa_12m_onetime ~
     race.cat + factor(age.grp) + factor(degcasl) + hiv.ego + factor(degmain_trunc2),
-  data = pinst_rate,
-  family = "quasipoisson"
+  data = pinst_rate
 )
 
-summary(fit_inst_joint)
-coef(fit_inst_joint)
-confint(fit_inst_joint)
+summary(fit_instrate)
+coef(fit_instrate)
+confint(fit_instrate)
 
-pred_inst_joint <- predict(
-  fit_inst_joint,
-  newdata = racmh_grid,
-  type = "response"
+pinstrate <- as.data.table(
+  expand.grid(
+    race.cat = unique(pinst_rate$race.cat),
+    age.grp = 1:5,
+    degcasl = unique(pinst_rate$degcasl),
+    hiv.ego = 0:1,
+    degmain_trunc2 = unique(pinst_rate$degmain_trunc2)
+  )
 )
 
-pred_inst_joint <- cbind(racmh_grid, pred_inst_joint)
-print(pred_inst_joint)
+pinstrate[, pred := predict(fit_instrate, newdata = pinstrate, type = "response")]
+
+pinstrate %>%
+  ggplot(aes(x = age.grp, y = pred, color = race.cat)) +
+  geom_line(aes(linetype = factor(hiv.ego))) +
+  geom_point(shape = 21, size = 4, fill = "white") +
+  facet_grid(degmain_trunc2 ~ degcasl) +
+  scale_color_viridis_d(option = "magma", end = 0.9) +
+  theme_clean()
 
 
-# %% WRITE SUMMARIES -----------------------------------------------------------
+################################################################################
+                             ## ANAL ROLE CLASS ##
+################################################################################
+
+mc <- as.data.table(complete(imp_mc, "long", include = TRUE))
+otp <- as.data.table(complete(imp_otp, "long", include = TRUE))
+
+mc <- mc[, .(.imp, .id, id, role.class)]
+otp <- otp[, .(.imp, .id, id, role.class)]
+
+all <- rbind(mc, otp)
+setkeyv(all, c(".imp", "id"))
+all[, .id := 1:nrow(all)]
+
+imp_all <- as.mids(all)
+
+fit_universal_role <- with(imp_all, multinom(role.class ~ 1))
+
+role_class_probs <- sapply(
+  fit_universal_role$analyses, function(x) {
+    predict(x, data.frame(1), type = "probs")
+  }) %>% rowMeans
+
+role_class_probs
+
+
+################################################################################
+                             ## WRITE SUMMARIES ##
+################################################################################
 
 main_summaries <- list(
   sum_main_total = sum_main_total,
@@ -866,57 +963,29 @@ saveRDS(
   file = "netstats/aggregate_degree_summaries.Rds"
 )
 
-# Main predictions
-main_pred_probs <- rbindlist(mainprob_by_ra)
-main_pred_joint <- as.data.table(pred_mdeg_joint)
-
-# Casual predictions
-casl_pred_probs <- rbindlist(caslprob_by_ra)
-casl_pred_joint <- as.data.table(pred_cdeg_joint)
-
-# Instantaneous predictions
-inst_pred_joint <- as.data.table(pred_inst_joint)
-
-nparams_fit <- list(
-  demo = list(ai.role.pr = mc_analrole),
-  main = list(
-    degprob = main_pred_probs,
-    degpred_joint = main_pred_joint,
-    concurrent = fit_main_concurrent,
-    racematch = mp_racematch,
-    age.grpmatch = mp_age.grpmatch,
-    hiv.discord = fit_main_serodisc,
-    durat_wks = fit_main_durat_wks,
-    role.class = mp_analrole
-  )
-)
-
 nparams <- list(
   demo = list(
-    ai.role.pr     = mc_analrole
+    ai.role.pr = role_class_probs
+  ),
+  mc = list(
+    racematch = fit_racematch_out,
+    age.grpmatch = fit_agematch_out,
+    hiv.discord = fit_serodisc_out
   ),
   main = list(
-    degprob        = main_pred_probs,
-    degpred_joint  = main_pred_joint,
-    concurrent     = as.data.table(pred_main_concurrent),
-    racematch      = mp_racematch,
-    age.grpmatch   = mp_age.grpmatch,
-    hiv.discord    = fit_main_serodisc,
-    durat_wks      = pred_main_durat_wks,
-    role.class     = mp_analrole
+    degprob = fit_mdeg,
+    concurrent = fit_main_concurrent,
+    durat_wks = fit_main_dur,
+    role.class = fit_mrole
   ),
   casl = list(
-    degprob        = casl_pred_probs,
-    degpred_joint  = casl_pred_joint,
-    concurrent     = as.data.table(pred_casl_concurrent),
-    racematch      = cp_racematch,
-    age.grpmatch   = cp_age.grpmatch,
-    hiv.discord    = fit_main_serodisc,
-    durat_wks      = pred_casl_durat_wks,
-    role.class     = cp_analrole
+    degprob = fit_cdeg,
+    concurrent = fit_casl_concurrent,
+    durat_wks = fit_casl_dur,
+    role.class = fit_crole
   ),
   inst = list(
-    inst_joint     = inst_pred_joint
+    instrate = fit_instrate
   )
 )
 
