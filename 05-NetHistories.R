@@ -22,7 +22,8 @@ theme_set(theme_classic())
 
 # Rationale for negative binomial and BIC:
 
-# Hamilton DT, Handcock MS, Morris M. Degree Distributions in Sexual Networks: # A Framework for Evaluating Evidence. Sex Transm Dis. 01/2008
+# Hamilton DT, Handcock MS, Morris M. Degree Distributions in Sexual Networks:
+# A Framework for Evaluating Evidence. Sex Transm Dis. 01/2008
 # [cited 2016 Jun 5];35(1):30–40.
 
 # Check Data
