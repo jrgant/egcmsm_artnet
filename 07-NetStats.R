@@ -635,10 +635,6 @@ out <- list()
 out$inputs <- list()
 out$inputs$race.dist <- race.dist[, -c("race.num")]
 out$inputs$age.grp.dist <- age.grp.dist[, -c("age.grp.num")]
-out$inputs$main.dist <-
-  maindeg.dist[, .(degmain_trunc2 = outcome, prob = maindeg.prob)]
-out$inputs$casl.dist <-
-  casldeg.dist[, .(degcasl = outcome, prob = casldeg.prob)]
 out$inputs$role.class.dist <- role.class.dist[, -c("role.class.num")]
 
 out$inputs
