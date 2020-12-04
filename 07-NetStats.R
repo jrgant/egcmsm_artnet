@@ -464,20 +464,30 @@ conc_prob_main <- predict(
 concurrent_main <- mean(conc_prob_main) * num
 
 ## Average partnership duration among main partnerships.
+pred_main_durat <- data.table(
+  ego.race.cat = race_char[attr_race],
+  ego.age.grp = attr_age.grp,
+  hiv2 = attr_diag.status,
+  dm = attr_deg.main
+)[dm > 0][, dm := NULL]
+
 durat_wks_main_preds <- predict(
   pdat$main$durat_wks,
-  newdata = data.table(
-    ego.race.cat = race_char[attr_race],
-    ego.age.grp = attr_age.grp,
-    hiv2 = attr_diag.status,
-    dm = attr_deg.main
-  )[dm > 0][, dm := NULL],
+  newdata = pred_main_durat,
   type = "response"
 )
 
 durat_wks_main <- mean(durat_wks_main_preds)
 durat_wks_main
 
+pred_main_durat[, durat_preds := durat_wks_main_preds]
+
+durat_wks_main_byage <-
+  pred_main_durat[, .(
+    mean_duration = mean(durat_preds)
+  ), keyby = ego.age.grp][, mean_duration]
+
+durat_wks_main_byage
 
 ################################################################################
               ## CASUAL PARTNERSHIPS, NETWORK TARGET STATISTICS ##
@@ -562,19 +572,30 @@ conc_prob_casl <- predict(
 concurrent_casl <- mean(conc_prob_casl) * num
 
 ## Average partnership duration among casual partnerships.
+pred_casl_durat <- data.table(
+  ego.race.cat = race_char[attr_race],
+  ego.age.grp = attr_age.grp,
+  hiv2 = attr_diag.status,
+  dc = attr_deg.casl
+)[dc > 0][, dc := NULL]
+
 durat_wks_casl_preds <- predict(
   pdat$casl$durat_wks,
-  newdata = data.table(
-    ego.race.cat = race_char[attr_race],
-    ego.age.grp = attr_age.grp,
-    hiv2 = attr_diag.status,
-    dc = attr_deg.casl
-  )[dc > 0][, dc := NULL],
+  newdata = pred_casl_durat,
   type = "response"
 )
 
 durat_wks_casl <- mean(durat_wks_casl_preds)
 durat_wks_casl
+
+pred_casl_durat[, durat_preds := durat_wks_casl_preds]
+
+durat_wks_casl_byage <-
+  pred_casl_durat[, .(
+    mean_duration = mean(durat_preds)
+  ), keyby = ego.age.grp][, mean_duration]
+
+durat_wks_casl_byage
 
 
 ################################################################################
@@ -699,6 +720,7 @@ out$netmain$nodematch_age.grp <- nodematch_age.grp_main
 out$netmain$nodematch_diagstatus <- nodematch_diag.status_main
 out$netmain$concurrent <- concurrent_main
 out$netmain$durat_wks <- durat_wks_main
+out$netmain$durat_wks_byage <- durat_wks_main_byage
 
 # ... NETWORK MODEL TARGETS (CASUAL PARTNERSHIPS)
 
@@ -713,6 +735,7 @@ out$netcasl$nodematch_age.grp <- nodematch_age.grp_casl
 out$netcasl$nodematch_diagstatus <- nodematch_diag.status_casl
 out$netcasl$concurrent <- concurrent_casl
 out$netcasl$durat_wks <- durat_wks_casl
+out$netcasl$durat_wks_byage <- durat_wks_casl_byage
 
 # ... NETWORK MODEL TARGETS (INSTANTANEOUS PARTNERSHIPS)
 out$netinst <- list()
