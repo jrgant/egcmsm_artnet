@@ -142,7 +142,7 @@ attr_race <- sample(
   replace = TRUE
 )
 
-## Anal Sex Role
+## Assign anal sex role
 # Source: ARTNet
 attr_role.class <- sample(
   role.class.dist[, role.class.lvls],
@@ -158,6 +158,14 @@ attr_role.class[attr_role.class == "Versatile"] <- 2
 attr_role.class <- as.numeric(attr_role.class)
 
 prop.table(table(attr_role.class))
+
+## Assign anal insertativity quotients
+vers <- which(attr_role.class == 2)
+attr_ins.quot <- rep(NA, num)
+attr_ins.quot[vers] <- runif(length(vers))
+
+## Assign oral insertativity quotient
+attr_ins.quot.oral <- runif(num)
 
 ## Assign diagnosis status
 race_char <- c("black", "hispanic", "other", "white")
@@ -674,7 +682,7 @@ out$demog$mortrate.marginal <- round(
 )
 
 # Anal Role Class
-for (i in 1:length(role.class.lvls)) {
+for (i in seq_len(length(role.class.lvls))) {
   out$demog[paste0(
         "role.class.", role.class.dist[i, role.class.lvls]
       )] <- role.class.dist[i, role.class.num]
@@ -730,9 +738,10 @@ out$attr$race <- attr_race
 out$attr$deg.main <- attr_deg.main
 out$attr$deg.casl <- attr_deg.casl
 out$attr$role.class <- attr_role.class
+out$attr$ins.quot <- attr_ins.quot
+out$attr$ins.quot.oral <- attr_ins.quot.oral
 out$attr$diag.status <- attr_diag.status
 
 
 # ... WRITE
-
 saveRDS(out, here::here("netstats", "netstats.Rds"))
