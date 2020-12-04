@@ -66,12 +66,14 @@ print(race.dist)
 # State-Level by Age Group among Men Who Have Sex with Men in the United
 # States. Open Forum Infect Dis. 2018 May 29
 
+t.unit <- 52
+
 age.grp.lvls <- list(
-  "18-24" = list(min = 18, max = 24),
-  "25-34" = list(min = 25, max = 34),
-  "35-44" = list(min = 35, max = 44),
-  "45-54" = list(min = 45, max = 54),
-  "55+"   = list(min = 55, max = 64)
+  "18-24" = list(min = 18 * t.unit, max = 25 * t.unit - 1),
+  "25-34" = list(min = 25 * t.unit, max = 34 * t.unit - 1),
+  "35-44" = list(min = 35 * t.unit, max = 44 * t.unit - 1),
+  "45-54" = list(min = 45 * t.unit, max = 54 * t.unit - 1),
+  "55+"   = list(min = 55 * t.unit, max = 64 * t.unit - 1)
 )
 
 age.grp.prob <- c(0.129, 0.242, 0.239, 0.216, 0.174)
@@ -124,11 +126,13 @@ attr_age.grp <- sample(
   replace = T
 )
 
-attr_age.yr <- vapply(attr_age.grp, FUN = function(x) {
-  runif(n = 1, min = age.grp.lvls[[x]]$min, age.grp.lvls[[x]]$max + 0.99)
+attr_age.wk <- vapply(attr_age.grp, FUN = function(x) {
+  round(runif(n = 1, min = age.grp.lvls[[x]]$min, age.grp.lvls[[x]]$max))
   },
   FUN.VALUE = 23.56) %>%
   unname
+
+attr_age.yr <- attr_age.wk / 52
 
 ## Assign race/ethnicity
 attr_race <- sample(
@@ -636,6 +640,7 @@ out$inputs
 out$demog <- list()
 out$demog$num <- num
 out$demog$asmr <- asmr
+out$demog$age.breaks <- c(18, 25, 35, 45, 55, 66)
 
 # Race/ethnicity
 for (i in seq_len(length(race.lvls))) {
@@ -646,7 +651,7 @@ for (i in seq_len(length(race.lvls))) {
 }
 
 # Age.Grp
-for (i in 1:length(age.grp.lvls)) {
+for (i in seq_len(length(age.grp.lvls))) {
   out$demog[paste0("num.age.grp_", i)] <- age.grp.dist[i, age.grp.num]
 }
 
@@ -654,7 +659,7 @@ for (i in 1:length(age.grp.lvls)) {
 out$demog$ages <- c(18, 65)
 
 # Mortality Rates (Weekly, Age-and-Race-specific)
-for (i in 1:(length(mort_rates_annual_raspec) - 1)) {
+for (i in seq_len(length(mort_rates_annual_raspec) - 1)) {
   for (j in 1:nrow(mort_rates_annual_raspec)) {
     out$demog[paste0("mortrate.",
     "race.", names(mort_rates_annual_raspec)[i + 1],
@@ -719,7 +724,7 @@ out$netinst$nodefactor_diagstatus <- nodefactor_diag.status_i
 out$attr <- list()
 out$attr$age <- attr_age.yr
 out$attr$sqrt.age <- sqrt(attr_age.yr)
-out$attr$age.wk <- attr_age.yr * 52
+out$attr$age.wk <- attr_age.wk
 out$attr$age.grp <- attr_age.grp
 out$attr$race <- attr_race
 out$attr$deg.main <- attr_deg.main
