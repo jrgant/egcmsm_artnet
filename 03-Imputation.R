@@ -321,19 +321,14 @@ fullyobs <- c(
 pmplot <- function(data) {
 
   ggplot(data, aes(x = variable, y = rn)) +
-    geom_point(
+    geom_tile(
       aes(shape = factor(value), fill = factor(value)),
-      size = 2
+      size = 1.5,
+      color = "black"
     ) +
-    scale_fill_viridis_d(
-      name = "Predictor Used to\nImpute Outcome",
-      option = "magma",
-      begin = 0.5,
-      direction = -1
-    ) +
-    scale_shape_manual(
-      name = "Predictor Used to\nImpute Outcome",
-      values = c(4, 21)
+    scale_fill_manual(
+      name = "Predictor Used to \nImpute Outcome",
+      values = c("black", "#ED1C24")
     ) +
     labs(
       x = "Predictor",
