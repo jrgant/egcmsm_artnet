@@ -15,10 +15,9 @@ plotdx("main")
 plotdx("casual")
 plotdx("inst")
 
+plot(dx[[1]], "duration")
 
 # Get network summaries
-
-print(mdx)
-print(cdx)
-print(idx)
-quickdag::qd_swig()
+dx[[1]]
+dx[[2]]
+dx[[3]]

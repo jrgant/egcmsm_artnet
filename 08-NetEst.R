@@ -52,8 +52,8 @@ nw <- set.vertex.attribute(nw, "role.class", netstats$attr$role.class)
 
 main_formation_full <-
   ~ edges +
-    nodefactor("race", levels = NULL) +
     nodefactor("age.grp", levels = NULL) +
+    nodefactor("race", levels = NULL) +
     nodefactor("deg.casl", levels = NULL) +
     nodefactor("diag.status", levels = NULL) +
     degrange(from = 3) +
@@ -65,8 +65,8 @@ main_formation_full <-
 
 main_formation <-
   ~ edges +
-    nodefactor("race", levels = I(2:4)) +
     nodefactor("age.grp", levels = I(2:5)) +
+    nodefactor("race", levels = I(2:4)) +
     nodefactor("deg.casl", levels = I(1:5)) +
     nodefactor("diag.status", levels = I(1)) +
     degrange(from = 3) +
@@ -79,8 +79,8 @@ main_formation <-
 netstats_main <-
   with(netstats$netmain,
     c(edges = edges,
-      nodefactor_race = nodefactor_race[-1],
       nodefactor_age.grp = nodefactor_age.grp[-1],
+      nodefactor_race = nodefactor_race[-1],
       nodefactor_degcasl = nodefactor_degcasl[-1],
       nodefactor_diag.status = nodefactor_diagstatus[-1],
       degrange = 0,
@@ -95,8 +95,11 @@ netstats_main <- unname(netstats_main)
 netstats_main
 
 coef_diss_main <- dissolution_coefs(
-  dissolution = ~offset(edges),
-  duration = netstats$netmain$durat_wks,
+  dissolution = ~offset(edges) + offset(nodefactor("age.grp", levels = I(2:5))),
+  duration = c(
+    netstats$netmain$durat_wks,
+    netstats$netmain$durat_wks_byage[-1]
+  ),
   d.rate = netstats$demog$mortrate.marginal
 )
 
@@ -123,8 +126,8 @@ dx_main <- netdx(
 
 ## NOTE: Need to burn in for a long time to assess duration match
 ## will be biased downward for early time steps.
-plot(dx_main, qnts = 0.95)
-plot(dx_main, type = "duration")
+## plot(dx_main, qnts = 0.95)
+## plot(dx_main, type = "duration")
 
 print(dx_main)
 
@@ -135,8 +138,8 @@ print(dx_main)
 
 casl_formation_full <-
   ~ edges +
-    nodefactor("race", levels = NULL) +
     nodefactor("age.grp", levels = NULL) +
+    nodefactor("race", levels = NULL) +
     nodefactor("deg.main", levels = NULL) +
     nodefactor("diag.status", levels = NULL) +
     degrange(from = 6) +
@@ -148,8 +151,8 @@ casl_formation_full <-
 
 casl_formation <-
   ~ edges +
-    nodefactor("race", levels = I(2:4)) +
     nodefactor("age.grp", levels = I(2:5)) +
+    nodefactor("race", levels = I(2:4)) +
     nodefactor("deg.main", levels = I(1:2)) +
     nodefactor("diag.status", level = I(1)) +
     degrange(from = 6) +
@@ -162,8 +165,8 @@ casl_formation <-
 netstats_casl <-
   with(netstats$netcasl,
     c(edges = edges,
-      nodefactor_race = nodefactor_race[-1],
       nodefactor_age.grp = nodefactor_age.grp[-1],
+      nodefactor_race = nodefactor_race[-1],
       nodefactor_degmain = nodefactor_degmain[-1],
       nodefactor_diag.status = nodefactor_diagstatus[-1],
       degrange = 0,
@@ -178,8 +181,11 @@ netstats_casl <- unname(netstats_casl)
 print(netstats_casl)
 
 coef_diss_casl <- dissolution_coefs(
-  dissolution = ~offset(edges),
-  duration = netstats$netcasl$durat_wks,
+  dissolution = ~offset(edges) + offset(nodefactor("age.grp", levels = I(2:5))),
+  duration = c(
+    netstats$netcasl$durat_wks,
+    netstats$netcasl$durat_wks_byage[-1]
+  ),
   d.rate = netstats$demog$mortrate.marginal
 )
 
@@ -206,9 +212,9 @@ dx_casl <- netdx(
 
 ## NOTE: Need to burn in for a long time to assess duration match
 ## will be biased downward for early time steps.
-plot(dx_casl, qnts = 0.95)
-plot(dx_casl, "duration")
-print(dx_casl)
+## plot(dx_casl, qnts = 0.95)
+## plot(dx_casl, "duration")
+## print(dx_casl)
 
 
 ################################################################################
@@ -273,8 +279,8 @@ dx_inst <- netdx(
   dynamic = FALSE
 )
 
-plot(dx_inst, sim.lines = TRUE, alpha = 0.4)
-print(dx_inst)
+## plot(dx_inst, sim.lines = TRUE, alpha = 0.4)
+## print(dx_inst)
 
 
 # %% Write ------------------------------------------------------------------
