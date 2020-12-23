@@ -881,7 +881,11 @@ print(pinst_rate)
 
 fit_instrate <- glm.nb(
   pnoa_12m_onetime ~
-    race.cat + factor(age.grp) + factor(degcasl) + hiv.ego + factor(degmain_trunc2),
+    race.cat +
+    factor(age.grp) +
+    factor(degcasl) +
+    hiv.ego +
+    factor(degmain_trunc2),
   data = pinst_rate
 )
 
@@ -899,7 +903,11 @@ pinstrate <- as.data.table(
   )
 )
 
-pinstrate[, pred := predict(fit_instrate, newdata = pinstrate, type = "response")]
+pinstrate[,
+  pred := predict(fit_instrate,
+                  newdata = pinstrate,
+                  type = "response"
+                  )]
 
 pinstrate %>%
   ggplot(aes(x = age.grp, y = pred, color = race.cat)) +
