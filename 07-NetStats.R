@@ -92,18 +92,8 @@ age.grp.dist <- data.table(
 ################################################################################
 
 # Source: ArtNet
-role.class.lvls <- names(pdat$demo$ai.role.pr)
+role.class.lvls <- names(pdat$demo$ai.role.pr)[3:5]
 role.class.prob <- pdat$demo$ai.role.pr
-role.class.num <- round(num * role.class.prob)
-sum(role.class.num) == num
-
-role.class.dist <- data.table(
-  role.class.lvls,
-  role.class.prob,
-  role.class.num
-)[order(role.class.lvls)]
-
-role.class.dist
 
 
 ################################################################################
@@ -123,7 +113,7 @@ attr_age.grp <- sample(
   seq_len(length(names(age.grp.lvls))),
   size = num,
   prob = age.grp.prob,
-  replace = T
+  replace = TRUE
 )
 
 attr_age.wk <- vapply(attr_age.grp, FUN = function(x) {
@@ -144,17 +134,22 @@ attr_race <- sample(
 
 ## Assign anal sex role
 # Source: ARTNet
-attr_role.class <- sample(
-  role.class.dist[, role.class.lvls],
-  size = num,
-  prob = role.class.dist[, role.class.prob],
-  replace = TRUE
-)
+rolepreds <- lapply(seq_len(num), function(x) {
+  r <- as.character(sort(unique(role.class.prob$race.i))[attr_race[x]])
+  a <- round(attr_age.yr[x])
+  rd <- role.class.prob[age.i == a & race.i == r]
+  rd[, .(Insertive, Receptive, Versatile)]
+}) %>% rbindlist
+
+attr_role.class_c <- sapply(seq_len(num), function(x) {
+  sample(role.class.lvls, 1, replace = TRUE, prob = unlist(rolepreds[x, ]))
+})
 
 # reformat for use in netsim
-attr_role.class[attr_role.class == "Insertive"] <- 0
-attr_role.class[attr_role.class == "Receptive"] <- 1
-attr_role.class[attr_role.class == "Versatile"] <- 2
+attr_role.class <- NULL
+attr_role.class[attr_role.class_c == "Insertive"] <- 0
+attr_role.class[attr_role.class_c == "Receptive"] <- 1
+attr_role.class[attr_role.class_c == "Versatile"] <- 2
 attr_role.class <- as.numeric(attr_role.class)
 
 prop.table(table(attr_role.class))

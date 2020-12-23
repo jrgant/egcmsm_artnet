@@ -181,7 +181,6 @@ pcdur %>%
   theme_clean()
 
 
-
 ################################################################################
                     ## MAKE DATASET TO CALCULATE DEGREES ##
 ################################################################################
@@ -925,23 +924,62 @@ pinstrate %>%
 mc <- as.data.table(complete(imp_mc, "long", include = TRUE))
 otp <- as.data.table(complete(imp_otp, "long", include = TRUE))
 
-mc <- mc[, .(.imp, .id, id, role.class)]
-otp <- otp[, .(.imp, .id, id, role.class)]
+mc <- mc[, .(.imp, .id, id, race.i, age.i, role.class)]
+otp <- otp[, .(.imp, .id, id, race.i, age.i, role.class)]
 
 all <- rbind(mc, otp)
 setkeyv(all, c(".imp", "id"))
-all[, .id := 1:nrow(all)]
 
-imp_all <- as.mids(all)
+all_oneid <- all[, head(.SD, 1), .(.imp, id)]
+all_oneid[, .id := seq_len(nrow(all_oneid))]
 
-fit_universal_role <- with(imp_all, multinom(role.class ~ 1))
+imp_all <- as.mids(all_oneid)
 
-role_class_probs <- sapply(
+# Look at relationship betwee age and role.class probability.
+# Doesn't look like a spline is needed.
+rolebyage <-
+  all_oneid[.imp != 0, .N, .(.imp, age.i, role.class)
+    ][, P := N/sum(N), keyby = .(.imp, age.i)
+    ][, .(P = mean(P)), .(age.i, role.class)]
+
+ggplot(rolebyage, aes(x = age.i, fill = role.class)) +
+  geom_col(
+    aes(y = P),
+    color = "black"
+  ) +
+  scale_fill_viridis_d(option = "magma")
+
+# Summarize role.class probability across imputed datasets,
+# conditional on race/ethnicity and age.
+fit_universal_role <-
+  with(imp_all, multinom(role.class ~ race.i * age.i))
+
+fit_universal_role_pooled <- summary(pool(fit_universal_role))
+
+roledat <- expand.grid(
+  age.i = 18:65,
+  race.i = c("black", "hispanic", "other", "white")
+)
+
+role_class_probs <- lapply(
   fit_universal_role$analyses, function(x) {
-    predict(x, data.frame(1), type = "probs")
-  }) %>% rowMeans
+    as.data.table(
+      cbind(roledat, predict(x, roledat, type = "probs"))
+    )
+  }) %>% rbindlist(., idcol = ".imp")
 
-role_class_probs
+role_class_probs <-
+  role_class_probs[, .(Insertive = mean(Insertive),
+                       Receptive = mean(Receptive),
+                       Versatile = mean(Versatile)), .(age.i, race.i)]
+
+rcp <- melt(role_class_probs, id.vars = c("age.i", "race.i"))
+
+ggplot(rcp, aes(x = age.i, y = value)) +
+  geom_line(aes(color = variable), size = 1) +
+  facet_wrap(~race.i) +
+  scale_color_viridis_d() +
+  theme_base()
 
 
 ################################################################################
@@ -973,6 +1011,7 @@ saveRDS(
 
 nparams <- list(
   demo = list(
+    ai.role.fit = fit_universal_role_pooled,
     ai.role.pr = role_class_probs
   ),
   mc = list(
