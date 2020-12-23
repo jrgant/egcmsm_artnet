@@ -261,10 +261,10 @@ lt_wide <- dcast(lt_long, age ~ race, value.var = "qx") %>%
     )]
 
 lt_wide[, ":=" (
-  vec.asmr.B = 1 - (1 - nhblack)^(1/52),
-  vec.asmr.H = 1 - (1 - hisp)^(1/52),
-  vec.asmr.O = 1 - (1 - nhwhite)^(1/52),
-  vec.asmr.W = 1 - (1 - nhwhite)^(1/52)
+  vec.asmr.B = 1 - (1 - nhblack)^(1 / 52),
+  vec.asmr.H = 1 - (1 - hisp)^(1 / 52),
+  vec.asmr.O = 1 - (1 - nhwhite)^(1 / 52),
+  vec.asmr.W = 1 - (1 - nhwhite)^(1 / 52)
 )]
 
 lt_wide
@@ -288,17 +288,28 @@ asmr <- rbind(
     vec.asmr.W = 1
   ))
 
-# calculate population margin mortality rate
-mort_rates <- lt_wide[, .(B = mean(nhblack),
-                          H = mean(hisp),
-                          W = mean(nhwhite)),
-                          by = age.grp]
+## # calculate population margin mortality rate (accounting for deterministic "death" at 65)
+mort_rates <- rbind(
+  lt_wide[, .(age, nhblack, hisp, nhwhite, age.grp)],
+  data.table(age = 65, nhblack = 1, hisp = 1, nhwhite = 1, age.grp = "55+")
+)[, .(B = mean(nhblack),
+      H = mean(hisp),
+      W = mean(nhwhite)), by = age.grp]
 
 # Assign Other the same mortality rate as Whites
 mort_rates[, O := W]
 mort_rates_annual_raspec <- as.data.frame(mort_rates)
 
 print(mort_rates_annual_raspec)
+
+asmr[, age.grp := cut(
+         age,
+         breaks = c(18, 25, 35, 45, 55, 66),
+         right = FALSE,
+         labels = FALSE
+       )]
+
+asmr[, paste(range(age), collapse = ","), age.grp]
 
 mort_rates_long <- melt(
   as.data.table(mort_rates_annual_raspec),
@@ -315,7 +326,7 @@ mort_rates_long <- melt(
    )
  )]
 
-mort_rates_long[, ":="(
+mort_rates_long[, ":=" (
   rprob = race.dist$race.prob[match(race, race.dist$race.lvls)],
   aprob = age.grp.dist$age.grp.prob[age.grp_numeric]
 )][, jt_prob := rprob * aprob]
@@ -332,11 +343,12 @@ pop <- pop[
 
 print(pop)
 
-mort_rate_annual_popmargin <- mort_rates_long[, mean(rate_percap)]
-print(mort_rate_annual_popmargin)
+## Calculate population margin departure rate, weighted by distribution of
+## race/ethnicity and age group in the virtual population.
+mort_rate_annual_popmargin <-
+  mort_rates_long[, weighted.mean(rate_percap, jt_prob)]
 
-## double-check (very similar)
-mort_rates_long[, weighted.mean(rate_percap, jt_prob)]
+print(mort_rate_annual_popmargin)
 
 
 ################################################################################
@@ -651,7 +663,7 @@ out <- list()
 out$inputs <- list()
 out$inputs$race.dist <- race.dist[, -c("race.num")]
 out$inputs$age.grp.dist <- age.grp.dist[, -c("age.grp.num")]
-out$inputs$role.class.dist <- role.class.dist[, -c("role.class.num")]
+out$inputs$role.class.dist <- prop.table(table(attr_role.class_c))
 
 out$inputs
 
@@ -688,7 +700,7 @@ for (i in seq_len(length(mort_rates_annual_raspec) - 1)) {
   }
 }
 
-# Mortality Rate (Weekly, population margin)
+# Mortality/Departure Rate (weekly, population margin)
 out$demog$mortrate.marginal <- round(
   1 - (1 - mort_rate_annual_popmargin) ^ (1 / 52), digits = 6
 )
@@ -696,8 +708,8 @@ out$demog$mortrate.marginal <- round(
 # Anal Role Class
 for (i in seq_len(length(role.class.lvls))) {
   out$demog[paste0(
-        "role.class.", role.class.dist[i, role.class.lvls]
-      )] <- role.class.dist[i, role.class.num]
+        "role.class.", role.class.lvls[i]
+      )] <- sum(attr_role.class_c == role.class.lvls[i])
 }
 
 print(out$demog)
