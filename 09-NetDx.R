@@ -1,5 +1,8 @@
 # %% SETUP ---------------------------------------------------------------------
 
+# NOTE: If not resimulating networks, go to last section to view plots of
+#       previously simulations.
+
 suppressMessages(library(EpiModel))
 est <- readRDS("netest/netest.Rds")
 
