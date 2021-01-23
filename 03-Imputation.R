@@ -346,7 +346,8 @@ pmplot <- function(data) {
       ),
       axis.text = element_text(size = 12),
       legend.text = element_text(size = 12),
-      legend.title = element_text(size = 14))
+      legend.title = element_text(size = 14)
+    )
 }
 
 
