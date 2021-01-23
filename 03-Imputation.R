@@ -308,10 +308,10 @@ pdt[, ":=" (
 )]
 
 dmc <- c("p_rai", "p_iai", "p_roi", "p_ioi")
-mc <- pdt[!rn %in% dmc & !variable %in% dmc]
+mc <- pdt[!rn %in% c(dmc, "abs_sqrt_agediff") & !variable %in% dmc]
 
 dmo <- c("ego.anal.role", "ptype", "durat_wks", "ai.rate.52", "oi.rate.52")
-otp <- pdt[!rn %in% dmo & !variable %in% dmo]
+otp <- pdt[!rn %in% c(dmo, "abs_sqrt_agediff") & !variable %in% dmo]
 
 fullyobs <- c(
   "ptype", "hiv2", "deg.main", "deg.casl",
@@ -322,26 +322,31 @@ pmplot <- function(data) {
 
   ggplot(data, aes(x = variable, y = rn)) +
     geom_tile(
-      aes(shape = factor(value), fill = factor(value)),
-      size = 1.5,
+      color = "black",
+      fill = "white"
+    ) +
+    geom_point(
+      data = data[value == 1],
+      aes(fill = "Yes"),
+      shape = 21,
       color = "black"
     ) +
     scale_fill_manual(
       name = "Predictor Used to \nImpute Outcome",
-      values = c("black", "#ED1C24")
+      values = "salmon"
     ) +
-    labs(
-      x = "Predictor",
-      y = "Outcome"
-    ) +
-    theme_minimal() +
+    labs(x = "Predictor", y = "Outcome") +
+    theme_tufte() +
     theme(
+      panel.grid.minor.y = element_line(),
       axis.ticks = element_blank(),
-      panel.grid = element_blank(),
-      axis.title = element_text(face = "bold"),
+      axis.title = element_text(face = "bold", size = 14),
       axis.text.x = element_text(
         angle = 90, vjust = 0.5, hjust = 1
-      ))
+      ),
+      axis.text = element_text(size = 12),
+      legend.text = element_text(size = 12),
+      legend.title = element_text(size = 14))
 }
 
 
@@ -352,16 +357,16 @@ ggsave(
   "imputation_diagnostics/predmat_plot_maincas.pdf",
   plot = pmp_mc,
   device = "pdf",
-  height = 6,
-  width = 7.5
+  height = 6.5,
+  width = 10
 )
 
 ggsave(
   "imputation_diagnostics/predmat_plot_onetime.pdf",
   plot = pmp_otp,
   device = "pdf",
-  height = 6,
-  width = 7.5
+  height = 6.5,
+  width = 10
 )
 
 
