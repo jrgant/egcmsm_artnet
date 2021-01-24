@@ -442,7 +442,7 @@ calc_nodefactor <- function(outcome, groupvar, data = attr_dt) {
 ## imply the correct number of total edges in the network.
 check_nodefactor <- function(nf, edges) {
   ifelse(
-    sum(nf) / 2 == edges,
+    all.equal(sum(nf) / 2, edges),
     "Good to go. Target stats imply the same number of total edges.",
     "Squash a bug somewhere."
   )
