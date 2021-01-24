@@ -97,6 +97,82 @@ role.class.prob <- pdat$demo$ai.role.pr
 
 
 ################################################################################
+                              ## CIRCUMCISION ##
+################################################################################
+
+library(RNHANES)
+library(survey)
+
+circ_in <- as.data.table(
+  nhanes_load_data("SXQ_I", "2015-2016", demographics = TRUE)
+)
+
+circ <- circ_in[, .(
+  SEQN, DMDHRGND, DMDHRAGE, RIDRETH3,
+  WTINT2YR, SDMVPSU, SDMVSTRA, SXQ280
+)]
+
+names(circ) <- tolower(names(circ))
+
+circ <- circ[dmdhrgnd == 1]
+
+# missing values
+circ[sxq280 %in% c(7, 9), sxq280 := NA]
+circ[sxq280 %in% c(NA, 7, 9), missing := 1]
+circ[sxq280 %in% c(1, 2), missing := 0]
+
+# race/ethnicity recode
+circ[, race4 := fcase(
+         ridreth3 == 3, "White",
+         ridreth3 == 4, "Black",
+         ridreth3 %in% c(1, 2), "Hispanic",
+         ridreth3 %in% c(6, 7), "Other"
+       )]
+
+# selection weight numerator
+design <- svydesign(
+  ids = ~ seqn,
+  data = circ,
+  weights = ~ wtint2yr
+)
+
+selwt_mod <- svyglm(
+  missing ~ race4 * dmdhrage,
+  design,
+  family = "binomial"
+)
+
+selwt_pred <- predict(selwt_mod, newdata = circ, type = "response")
+selwt_pred <- selwt_pred[seq_len(length(selwt_pred))]
+
+circ[, selwt := fcase(
+         missing == 1, mean(missing) / selwt_pred,
+         missing == 0, (1 - mean(missing)) / (1 - selwt_pred)
+       )][, comb_wt := wtint2yr * selwt]
+
+# combined weight
+comb_design <- svydesign(
+  ids = ~ seqn,
+  data = circ[missing == 0],
+  weights = ~ comb_wt
+)
+
+circ_mod <- svyglm(sxq280 == 1 ~ race4, comb_design, family = "binomial")
+
+rlabs <- c("Black", "Hispanic", "Other", "White")
+
+circ_prob_pred <- predict(
+  circ_mod,
+  newdata = data.frame(race4 = rlabs),
+  type = "response"
+)
+
+circ_prob_pred <- circ_prob_pred[seq_along(circ_prob_pred)]
+circ.probs <- unname(circ_prob_pred)
+names(circ.probs) <- rlabs
+
+
+################################################################################
                         ## INITIALIZE NODE ATTRIBUTES ##
 ################################################################################
 
@@ -664,6 +740,7 @@ out$inputs <- list()
 out$inputs$race.dist <- race.dist[, -c("race.num")]
 out$inputs$age.grp.dist <- age.grp.dist[, -c("age.grp.num")]
 out$inputs$role.class.dist <- prop.table(table(attr_role.class_c))
+out$inputs$circ.probs <- circ.probs
 
 out$inputs
 
