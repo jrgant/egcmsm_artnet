@@ -209,10 +209,11 @@ setnames(dsti, c("stitest_perweek_all"), c("stitest_perweek"))
 
 dsti[, race.cat := match(race.string, c("black", "hispanic", "other", "white"))]
 dsti[, .N, keyby = .(race.string, race.cat)]
-dsti[, stitest.52 := floor(stitest_perweek * 52)]
+dsti[, stitest.52 := round(stitest_perweek * 52)]
 
 ## EDA.
 dsti[!is.na(stitest.52), .(mean = mean(stitest.52), var = var(stitest.52))]
+
 dsti[
   !is.na(stitest.52) & stitest.52 > 0,
   .(mean = mean(stitest.52), var = var(stitest.52))
@@ -242,7 +243,22 @@ fit_stitest_3k <- zeroinfl(
   x = TRUE
 )
 
-sapply(list(fit_stitest_5k, fit_stitest_3k), AIC)
+fit_stitest_3p <- zeroinfl(
+  stitest.52 ~ factor(race.cat) + poly(age, 2),
+  data = dsti,
+  x = TRUE
+)
+
+fit_stitest_2p <- zeroinfl(
+  stitest.52 ~ factor(race.cat) + poly(age, 3),
+  data = dsti,
+  x = TRUE
+)
+
+sapply(
+  list(fit_stitest_5k, fit_stitest_3k, fit_stitest_3p, fit_stitest_2p),
+  AIC
+)
 
 summary(fit_stitest_5k)
 
