@@ -46,7 +46,7 @@ deg[, .N, deg.main]
 an <- an[deg, on = "id"]
 
 ansub <- copy(an)
-ansub <- ansub[, .(id, cuml.pnum, prep_revised)]
+ansub <- ansub[age %in% 18:65, .(id, cuml.pnum, prep_revised)]
 setkey(ansub, "id")
 
 ## Fix NA coding
@@ -76,11 +76,11 @@ anlsub <- copy(anl)
 ##   For PrEP and ART, p_artuse, for instance, indicates the ego's ART use with
 ##   the given alter, and the "_part" suffix indicates the alter's status.
 
-anlsub <- anlsub[, .(
-  id, pid, pid_unique,
+anlsub <- anlsub[ego.age %in% 18:65, .(
+  id, pid, pid_unique, sub_date,
   ego.race.cat, ego.age, hiv2, ego.anal.role,
   p_race.cat, p_age_i1 = p_age_imputed, abs_sqrt_agediff,
-  p_hiv2, p_ongoing_ind, durat_wks, ptype,
+  p_hiv2, p_ongoing_ind, durat_wks, ego.age.pstart, ptype,
   cond.prob, p_rai, p_iai, p_roi, p_ioi,
   p_prepuse = p_prepuse2, p_prepuse_part = p_prepuse_part2,
   oi.rate.52, ai.rate.52,
@@ -104,9 +104,9 @@ str(mcong_otp)
                           ## MISSING DATA SUMMARIES ##
 ################################################################################
 
-dropfromviz <- c("id", "pid", "pid_unique")
+dropfromviz <- c("id", "pid", "pid_unique", "sub_date")
 dropformc <- c(dropfromviz, paste0("p_", c("rai", "iai", "roi", "ioi")))
-dropforotp <- c(dropfromviz, "ai.rate.52", "oi.rate.52")
+dropforotp <- c(dropfromviz, "ai.rate.52", "oi.rate.52", "ego.age.pstart")
 
 ## Main/casual pratnerships
 md.pattern(mcong_otp[ptype %in% 1:2, -..dropformc], rotate.names = TRUE)
@@ -206,7 +206,7 @@ as.data.table(
 ## though its outcome model won't use the imputed data (very low missingness)
 ## for STITEST.ALL.52.
 check_flux <- anflux[, .(
-  id, hiv2,
+  id, hiv2, sub_date,
   an_prep_current, prep_revised, deg.main, deg.casl,
   pnua_12m, cuml.pnum, stitest.all.52, mmconc
 ), keyby = id]
@@ -231,7 +231,7 @@ pred <- make.predictorMatrix(mcong_otp)
 
 ## p_rai, p_iai, p_roi, p_ioi are complete in one-time contacts.
 completevars <- c(
-  "id", "pid", "pid_unique",
+  "id", "pid", "pid_unique", "sub_date",
   "ego.race.cat", "ego.age", "hiv2",
   "ptype", "cuml.pnum", "deg.main", "deg.casl",
   "p_rai", "p_iai", "p_roi", "p_ioi"
@@ -241,13 +241,14 @@ completevars <- c(
 pred[completevars, ] <- 0
 
 ## Don't impute using ID variables.
-pred[, c("id", "pid", "pid_unique")] <- 0
+pred[, c("id", "pid", "pid_unique", "sub_date")] <- 0
 
 ## Identify respondent ID (mice will treat as class/cluster ID)
 pred[, "id"] <- -2
 
-## Use passive imputation only for abs_sqrt_agediff
+## Use passive imputation only for abs_sqrt_agediff and ego at at partnership
 pred["abs_sqrt_agediff", ] <- 0
+pred["ego.age.pstart", ] <- 0
 
 ## Don't use variables that are related determinstically due to skip patterns.
 pred[
@@ -262,8 +263,8 @@ pred[
 
 pred[
   "p_prepuse",
-  c("hiv2", "prep_revised", "p_artuse_bin", "an_prep_current",
-    "abs_sqrt_agediff", "durat_wks", "mmconc", "cuml.pnum", "pnua_12m")
+  c("hiv2", "prep_revised", "p_artuse_bin", "an_prep_current", "abs_sqrt_agediff",
+    "durat_wks", "mmconc", "cuml.pnum", "pnua_12m")
 ] <- 0
 
 pred[
@@ -274,8 +275,8 @@ pred[
 
 pred[
   "p_artuse_bin",
-  c("hiv2", "prep_revised", "an_prep_current", "p_prepuse",
-    "abs_sqrt_agediff", "durat_wks", "mmconc", "cuml.pnum", "pnua_12m")
+  c("hiv2", "prep_revised", "an_prep_current", "p_prepuse", "abs_sqrt_agediff",
+    "durat_wks", "mmconc", "cuml.pnum", "pnua_12m")
 ] <- 0
 
 pred[
@@ -299,7 +300,7 @@ pred
 
 pdt <- as.data.table(pred, keep.rownames = TRUE)
 pdt <- melt(pdt, id.vars = "rn")
-idvars <- c("id", "pid", "pid_unique")
+idvars <- c("id", "pid", "pid_unique", "sub_date")
 
 pdt <- pdt[!rn %in% idvars & !variable %in% idvars]
 pdt[, ":=" (
@@ -308,9 +309,13 @@ pdt[, ":=" (
 )]
 
 dmc <- c("p_rai", "p_iai", "p_roi", "p_ioi")
-mc <- pdt[!rn %in% c(dmc, "abs_sqrt_agediff") & !variable %in% dmc]
+mc <- pdt[!rn %in% c(dmc, "ego.age.pstart", "abs_sqrt_agediff") & !variable %in% dmc]
 
-dmo <- c("ego.anal.role", "ptype", "durat_wks", "ai.rate.52", "oi.rate.52")
+dmo <- c(
+  "ego.anal.role", "ego.age.pstart", "ptype",
+  "durat_wks", "ai.rate.52", "oi.rate.52"
+)
+
 otp <- pdt[!rn %in% c(dmo, "abs_sqrt_agediff") & !variable %in% dmo]
 
 fullyobs <- c(
@@ -352,10 +357,12 @@ pmplot <- function(data) {
 
 
 pmp_mc <- pmplot(mc[!rn %in% fullyobs])
-pmp_otp <- pmplot(otp[!rn %in% fullyobs])
+
+pmp_otp <- pmplot(
+  otp[!rn %in% c(fullyobs, paste0("p_", c("rai", "roi", "iai", "ioi")))])
 
 ggsave(
-  "imputation_diagnostics/predmat_plot_maincas.pdf",
+  paste0("imputation_diagnostics/predmat_plot_maincas_", Sys.Date(), ".pdf"),
   plot = pmp_mc,
   device = "pdf",
   height = 6.5,
@@ -363,7 +370,7 @@ ggsave(
 )
 
 ggsave(
-  "imputation_diagnostics/predmat_plot_onetime.pdf",
+  paste0("imputation_diagnostics/predmat_plot_onetime_", Sys.Date(), ".pdf"),
   plot = pmp_otp,
   device = "pdf",
   height = 6.5,
@@ -409,7 +416,8 @@ l2 <- c(
 )
 
 ## Methods
-meth["abs_sqrt_agediff"] <- "~ I(abs(sqrt(ego.age) - sqrt(p_age_i1)))"
+meth["ego.age.pstart"] <- "~ I(round(ego.age - lubridate::time_length(lubridate::interval(lubridate::ymd(sub_date) - lubridate::weeks(durat_wks), lubridate::ymd(sub_date)), unit = 'year')))"
+meth["abs_sqrt_agediff"] <- "~ I(abs(sqrt(ego.age.pstart) - sqrt(p_age_i1)))"
 meth[c(l1_cat, l1_count)] <- "2l.pmm"
 meth[l1_bin] <- "2l.pmm"
 meth[l2] <- "2lonly.pmm"
@@ -459,8 +467,10 @@ inimc <- mice(
   method = methmc
 )
 
+## NOTE:
 ## Check visit sequence to make sure that abs_sqrt_agediff is passively imputed
-## right after p_age_i1 is imputed. The variable subsetting conducted at the
+## right after p_age_i1 is imputed and ego.age.pstart right after durat_wks.
+## The variable subsetting conducted at the
 ## beginning of this script ordered these variables intentionally.
 vismc <- inimc$visitSequence
 vismc
@@ -468,7 +478,9 @@ vismc
 
 # ONE-TIME CONTACTS -----------------------------------------------------------
 
-dropfromotp <- c(rate.vars, "ego.anal.role", "durat_wks", "ptype")
+dropfromotp <- c(
+  rate.vars, "ego.anal.role", "ego.age.pstart", "durat_wks", "ptype"
+)
 
 otp <- mcong_otp[ptype == 3][, (dropfromotp) := NULL]
 
@@ -478,6 +490,7 @@ predotp <- pred[
 ]
 
 methotp <- meth[!names(meth) %in% dropfromotp]
+methotp["abs_sqrt_agediff"] <- "~ I(abs(sqrt(ego.age) - sqrt(p_age_i1)))"
 
 iniotp <- mice(
   otp,
@@ -735,6 +748,9 @@ cmc_tmp[, (dropvars) := NULL]
 names(cmc_tmp)
 
 setnames(cmc_tmp, rn_vars, names(rn_vars))
+# additional tweaks to column names in main/casual data for compatibility
+# with EpiModelHIV modules.
+setnames(cmc_tmp, c("age.i", "ego.age.pstart"), c("age.i.surv", "age.i"))
 names(cmc_tmp)
 
 makevars(cmc_tmp)
@@ -746,7 +762,7 @@ cop_tmp[, (dropvars) := NULL]
 names(cop_tmp)
 
 rn_vars2 <- rn_vars[rn_vars != "ego.anal.role"]
-setnames(cop_tmp, rn_vars2, names(rn_vars2))
+setnames(cop_tmp, rn_vars2, names(rn_vars2), skip_absent = TRUE)
 names(cop_tmp)
 
 makevars(cop_tmp)
@@ -848,25 +864,25 @@ cimp_mc <- as.data.table(complete(imp_mc, "long"))
 
 ### PrEP, ego
 mcong[, .N, keyby = .(hiv2, prep_revised)]   # original data
-cimp_mc[, .N, keyby = .(hiv2, prep_revised)]     # imp_mcuted data
+cimp_mc[, .N, keyby = .(hiv2, prep_revised)] # imp_mc data
 
-mcong[, .N, keyby = .(hiv2, p_prepuse)]      # original data
-cimp_mc[, .N, keyby = .(hiv2, p_prepuse)]        # imp_mcuted data
+mcong[, .N, keyby = .(hiv2, p_prepuse)]   # original data
+cimp_mc[, .N, keyby = .(hiv2, p_prepuse)] # imp_mc data
 
-mcong[, .N, keyby = .(an_prep_current, prep_revised)]  # original data
-cimp_mc[, .N, keyby = .(an_prep_current, prep_revised)]    # imp_mcuted data
+mcong[, .N, keyby = .(an_prep_current, prep_revised)]   # original data
+cimp_mc[, .N, keyby = .(an_prep_current, prep_revised)] # imp_mc data
 
 ### PrEP, alter
-mcong[, .N, keyby = .(p_hiv2, p_prepuse_part)]  # original data
-cimp_mc[, .N, keyby = .(p_hiv2, p_prepuse_part)]    # imp_mcuted data
+mcong[, .N, keyby = .(p_hiv2, p_prepuse_part)]   # original data
+cimp_mc[, .N, keyby = .(p_hiv2, p_prepuse_part)] # imp_mc data
 
 ### ART, ego
-mcong[, .N, keyby = .(hiv2, p_artuse_bin)]      # original data
-cimp_mc[, .N, keyby = .(hiv2, p_artuse_bin)]        # imp_mcuted data
+mcong[, .N, keyby = .(hiv2, p_artuse_bin)]   # original data
+cimp_mc[, .N, keyby = .(hiv2, p_artuse_bin)] # imp_mc data
 
 ### ART, alter
-mcong[, .N, keyby = .(p_hiv2, p_artuse_part_bin)]  # original data
-cimp_mc[, .N, keyby = .(p_hiv2, p_artuse_part_bin)]    # imp_mcuted data
+mcong[, .N, keyby = .(p_hiv2, p_artuse_part_bin)]   # original data
+cimp_mc[, .N, keyby = .(p_hiv2, p_artuse_part_bin)] # imp_mc data
 
 
 imp_dx_dir <- "imputation_diagnostics"

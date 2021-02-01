@@ -502,20 +502,52 @@ startdt_match <- list(ydk1 = 1:364,
 
 sapply(startdt_match, range)
 
-anl[!is.na(p_startyyyydk),
-  p_startdt := sub_date - sample(startdt_match[[p_startyyyydk]], size = 1),
+anl[
+  !is.na(p_startyyyydk),
+  p_startdt_imp := sub_date - sample(startdt_match[[p_startyyyydk]], size = 1),
   by = .(id, pid)]
 
+# Create a new version of partnership start year based on imputed start date.
+anl[, p_startdt_imp_comb := fcase(
+        !is.na(p_startdt), p_startdt,
+        !is.na(p_startdt_imp), p_startdt_imp,
+        default = NA
+      )]
+
+anl[, p_startyyyy_imp_comb := year(ymd(p_startdt_imp_comb))]
+
+anl[, ego.age.pstart := round(
+        ego.age - time_length(
+                    interval(p_startdt_imp_comb, sub_date), unit = "year"))]
+
 anl[ptype %in% 1:2 & p_ongoing_ind == 1 & !is.na(p_startdt), .(
-    sub_date, p_startdt
+    sub_date, p_startdt, p_startdt_imp, p_startdt_imp_comb,
+    ego.age, ego.age.pstart
     )]
 
+anl[, summary(ego.age.pstart)]
+
+## NOTE:
+## A handful of partnership start dates (imputed and reported) lead to
+## unrealistic or impossible ego age at partnership start.
+## Set relevant variables for these partnerships to missing.
+anl[ego.age.pstart < min(anl$p_age, na.rm = TRUE),
+    ":=" (
+      ego.age.pstart = NA,
+      p_startdt = NA,
+      p_startyyyy = NA,
+      p_startdt_imp = NA,
+      p_startdt_imp_comb = NA
+    )]
+
+## Calculate ADSA based on ego age at partnership start.
+anl[, abs_sqrt_agediff := abs(sqrt(ego.age.pstart) - sqrt(p_age_imputed))]
 
 ## NOTE:
 ## Here we take the absolute value of the difference in dates to account
 ## for imputed dates that were after the sub date.
 
-anl[, durat_days := abs(as.numeric(sub_date - p_startdt))]
+anl[, durat_days := abs(as.numeric(sub_date - p_startdt_imp_comb))]
 anl[, durat_wks := round(durat_days / 7)]
 anl[ptype == 3, durat_wks := 0]
 
@@ -525,7 +557,8 @@ class(anl$durat_wks)
 anl[, .(
   id, pid,
   ptype, ego.race.cat, ego.age.grp,
-  p_startyyyy, p_startmm, p_startdt, sub_date,
+  p_startyyyy, p_startmm, p_startdt,
+  p_startdt_imp_comb, p_startyyyy_imp_comb, sub_date,
   durat_days, durat_wks
 )]
 
@@ -772,14 +805,6 @@ anl[, .N, keyby = .(p_artuse_part, p_artuse_part_bin)]
 
 # calculate age differences
 anl[, p_age_imputed := as.numeric(as.character(p_age_imputed))]
-
-anl[, ":="(
-  abs_agediff = abs(p_age_imputed - ego.age),
-  abs_sqrt_agediff = abs(sqrt(p_age_imputed) - sqrt(ego.age))
-)]
-
-anl[, .(abs_agediff, abs_sqrt_agediff)]
-sum(is.na(anl$abs_sqrt_agediff))
 
 
 # %% VARIABLE CLASS FIXES ------------------------------------------------------

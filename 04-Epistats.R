@@ -291,7 +291,7 @@ ggplot(psti, aes(x = age, y = pred_val)) +
 
 
 ################################################################################
-                ## ANAL SEX ACT RATES, MAIN/CASUAL - IMPUTED DATA ##
+        ## ANAL SEX ACT RATES (VIZ ONLY), MAIN/CASUAL - IMPUTED DATA ##
 ################################################################################
 
 ## EDA. (Uses the first imputed dataset)
@@ -376,7 +376,8 @@ select_model <- function(impobj, fml, outcome,
           as.formula(paste(outcome, x[[1]])),
           family = binomial,
           model = FALSE,
-          y = FALSE
+          y = FALSE,
+          control = glm.control(maxit = 100)
         ),
         f2 <- stepAIC(
           f1,
@@ -465,8 +466,8 @@ check_pooled_fit <- function(selmod, pred_df) {
   fit2 <- selmod$fit_out
   attr(fit2$terms, ".Environment") <- globalenv()
 
-  pred1 <- predict(fit1, pred_df, type = "response")
-  pred2 <- predict(fit2, pred_df, type = "response")
+  pred1 <- predict(fit1, newdata = pred_df, type = "response")
+  pred2 <- predict(fit2, newdata = pred_df, type = "response")
 
   list(pred_single_fit = unname(pred1), pred_pooled_fit = unname(pred2))
 }
@@ -481,6 +482,7 @@ ai52 <- select_model(imp_mc, fml_mc, "ai.rate.52", "negbin")
 ## Confirm that replacement coefficients are used correctly with predict().
 pred_ai52 <- data.table(
   ptype = 2,
+  any.prep = 1,
   race.combo = 11,
   age.i = 45,
   age.j = 30,
@@ -491,7 +493,6 @@ pred_ai52 <- data.table(
 
 ## Prediction from model fit to first imputation
 check_pooled_fit(ai52, pred_ai52)
-
 
 ################################################################################
                    ## CONDOM USE, MAIN/CASUAL PARTNERSHIPS ##
@@ -560,13 +561,13 @@ check_pooled_fit(cond_otp, pred_condotp)
 oi52 <- select_model(imp_mc, fml_mc, "oi.rate.52", "negbin")
 
 pred_oi52 <- data.table(
+  any.prep = 0,
   race.combo = 14,
+  ptype = 2,
   age.i = 18,
   age.j = 20,
   abs_sqrt_agediff = abs(sqrt(18) - sqrt(20)),
-  any.prep = 0,
-  durat_wks = 50,
-  ptype = 2
+  durat_wks = 50
 )
 
 ## Create a model object to use with predict() in the epidemic model.
@@ -581,11 +582,11 @@ check_pooled_fit(oi52, pred_oi52)
 oi_once <- select_model(imp_otp, fml_otp, "oi_once", "logit")
 
 pred_oionce <- data.table(
+  hiv.concord = 1,
   race.combo = 11,
   age.i = 45,
   age.j = 37,
   abs_sqrt_agediff = abs(sqrt(45) - sqrt(37)),
-  hiv.concord = 1,
   any.prep = 1
 )
 
