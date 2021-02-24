@@ -80,7 +80,7 @@ anlsub <- anlsub[ego.age %in% 18:65, .(
   id, pid, pid_unique, sub_date,
   ego.race.cat, ego.age, hiv2, ego.anal.role,
   p_race.cat, p_age_i1 = p_age_imputed, abs_sqrt_agediff,
-  p_hiv2, p_ongoing_ind, durat_wks, ego.age.pstart, ptype,
+  p_hiv2, p_ongoing_ind, durat_wks, ptype,
   cond.prob, p_rai, p_iai, p_roi, p_ioi,
   p_prepuse = p_prepuse2, p_prepuse_part = p_prepuse_part2,
   oi.rate.52, ai.rate.52,
@@ -106,7 +106,7 @@ str(mcong_otp)
 
 dropfromviz <- c("id", "pid", "pid_unique", "sub_date")
 dropformc <- c(dropfromviz, paste0("p_", c("rai", "iai", "roi", "ioi")))
-dropforotp <- c(dropfromviz, "ai.rate.52", "oi.rate.52", "ego.age.pstart")
+dropforotp <- c(dropfromviz, "ai.rate.52", "oi.rate.52")
 
 ## Main/casual pratnerships
 md.pattern(mcong_otp[ptype %in% 1:2, -..dropformc], rotate.names = TRUE)
@@ -248,7 +248,6 @@ pred[, "id"] <- -2
 
 ## Use passive imputation only for abs_sqrt_agediff and ego at at partnership
 pred["abs_sqrt_agediff", ] <- 0
-pred["ego.age.pstart", ] <- 0
 
 ## Don't use variables that are related determinstically due to skip patterns.
 pred[
@@ -263,8 +262,8 @@ pred[
 
 pred[
   "p_prepuse",
-  c("hiv2", "prep_revised", "p_artuse_bin", "an_prep_current", "abs_sqrt_agediff",
-    "durat_wks", "mmconc", "cuml.pnum", "pnua_12m")
+  c("hiv2", "prep_revised", "p_artuse_bin", "an_prep_current",
+    "abs_sqrt_agediff", "durat_wks", "mmconc", "cuml.pnum", "pnua_12m")
 ] <- 0
 
 pred[
@@ -309,10 +308,10 @@ pdt[, ":=" (
 )]
 
 dmc <- c("p_rai", "p_iai", "p_roi", "p_ioi")
-mc <- pdt[!rn %in% c(dmc, "ego.age.pstart", "abs_sqrt_agediff") & !variable %in% dmc]
+mc <- pdt[!rn %in% c(dmc, "abs_sqrt_agediff") & !variable %in% dmc]
 
 dmo <- c(
-  "ego.anal.role", "ego.age.pstart", "ptype",
+  "ego.anal.role", "ptype",
   "durat_wks", "ai.rate.52", "oi.rate.52"
 )
 
@@ -416,8 +415,7 @@ l2 <- c(
 )
 
 ## Methods
-meth["ego.age.pstart"] <- "~ I(round(ego.age - lubridate::time_length(lubridate::interval(lubridate::ymd(sub_date) - lubridate::weeks(durat_wks), lubridate::ymd(sub_date)), unit = 'year')))"
-meth["abs_sqrt_agediff"] <- "~ I(abs(sqrt(ego.age.pstart) - sqrt(p_age_i1)))"
+meth["abs_sqrt_agediff"] <- "~ I(abs(sqrt(ego.age) - sqrt(p_age_i1)))"
 meth[c(l1_cat, l1_count)] <- "2l.pmm"
 meth[l1_bin] <- "2l.pmm"
 meth[l2] <- "2lonly.pmm"
@@ -469,7 +467,8 @@ inimc <- mice(
 
 ## NOTE:
 ## Check visit sequence to make sure that abs_sqrt_agediff is passively imputed
-## right after p_age_i1 is imputed and ego.age.pstart right after durat_wks.
+## right after p_age_i1 is imputed.
+##
 ## The variable subsetting conducted at the
 ## beginning of this script ordered these variables intentionally.
 vismc <- inimc$visitSequence
@@ -479,7 +478,7 @@ vismc
 # ONE-TIME CONTACTS -----------------------------------------------------------
 
 dropfromotp <- c(
-  rate.vars, "ego.anal.role", "ego.age.pstart", "durat_wks", "ptype"
+  rate.vars, "ego.anal.role", "durat_wks", "ptype"
 )
 
 otp <- mcong_otp[ptype == 3][, (dropfromotp) := NULL]
@@ -750,8 +749,8 @@ names(cmc_tmp)
 setnames(cmc_tmp, rn_vars, names(rn_vars))
 # additional tweaks to column names in main/casual data for compatibility
 # with EpiModelHIV modules.
-setnames(cmc_tmp, c("age.i", "ego.age.pstart"), c("age.i.surv", "age.i"))
-names(cmc_tmp)
+#setnames(cmc_tmp, c("age.i", "ego.age.pstart"), c("age.i.surv", "age.i"))
+#names(cmc_tmp)
 
 makevars(cmc_tmp)
 cmc_tmp
