@@ -39,8 +39,14 @@ anl <- fread(file.path(pd_path, "artnet-long-cleaned.csv"))
 
 imp_mc <- readRDS(file.path(pd_path, "artnet-imputed-mc-augmented.Rds"))
 imp_otp <- readRDS(file.path(pd_path, "artnet-imputed-otp-augmented.Rds"))
-mcdt <- as.data.table(complete(imp_mc, action = "long"))
-otpdt <- as.data.table(complete(imp_otp, action = "long"))
+
+mcdt <- as.data.table(
+  complete(imp_mc, action = "long")
+)[age.j >= 18 & age.j <= 65]
+
+otpdt <- as.data.table(
+  complete(imp_otp, action = "long")
+)[age.j >= 18 & age.j <= 65]
 
 sort(names(an))
 sort(names(anl))

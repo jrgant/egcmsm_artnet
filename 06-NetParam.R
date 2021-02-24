@@ -324,9 +324,10 @@ mcdat <- as.data.table(complete(imp_mc, action = "long", include = TRUE))
 str(mcdat)
 
 age_breaks.i <- c(15, 25, 35, 45, 55, 66)
-age_breaks.j <- c(14, 25, 35, 45, 55, 81)
+age_breaks.j <- c(14, 25, 35, 45, 55, 88)
 
-mcdat[, ":="(
+# drop partners not aged between [18, 65]
+mcdat[, ":=" (
   samerace = ifelse(race.i == race.j, 1, 0),
   age.grp.i = as.numeric(cut(age.i, age_breaks.i, right = FALSE)),
   age.grp.j = as.numeric(cut(age.j, age_breaks.j, right = FALSE)),
@@ -345,7 +346,8 @@ fit_racematch <- with(
   imp_mc,
   glm(
     samerace ~ ptype + race.i + factor(age.grp.i) + factor(diag.status.i),
-    family = binomial
+    family = binomial,
+    subset = age.j >= 18 & age.j <= 65
   )
 )
 
@@ -394,7 +396,8 @@ fit_agematch <- with(
   imp_mc,
   glm(
     sameage ~ ptype + race.i + factor(age.grp.i) + factor(diag.status.i),
-    family = binomial
+    family = binomial,
+    subset = age.j >= 18 & age.j <= 65
   )
 )
 
@@ -438,7 +441,8 @@ fit_serodisc <- with(
   imp_mc,
   glm(
     serodisc ~ ptype + race.i + age.grp.i + factor(diag.status.i),
-    family = binomial
+    family = binomial,
+    subset = age.j >= 18 & age.j <= 65
   )
 )
 
