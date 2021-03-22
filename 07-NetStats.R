@@ -97,82 +97,6 @@ role.class.prob <- pdat$demo$ai.role.pr
 
 
 ################################################################################
-                              ## CIRCUMCISION ##
-################################################################################
-
-library(RNHANES)
-library(survey)
-
-circ_in <- as.data.table(
-  nhanes_load_data("SXQ_I", "2015-2016", demographics = TRUE)
-)
-
-circ <- circ_in[, .(
-  SEQN, DMDHRGND, DMDHRAGE, RIDRETH3,
-  WTINT2YR, SDMVPSU, SDMVSTRA, SXQ280
-)]
-
-names(circ) <- tolower(names(circ))
-
-circ <- circ[dmdhrgnd == 1]
-
-# missing values
-circ[sxq280 %in% c(7, 9), sxq280 := NA]
-circ[sxq280 %in% c(NA, 7, 9), missing := 1]
-circ[sxq280 %in% c(1, 2), missing := 0]
-
-# race/ethnicity recode
-circ[, race4 := fcase(
-         ridreth3 == 3, "White",
-         ridreth3 == 4, "Black",
-         ridreth3 %in% c(1, 2), "Hispanic",
-         ridreth3 %in% c(6, 7), "Other"
-       )]
-
-# selection weight numerator
-design <- svydesign(
-  ids = ~ seqn,
-  data = circ,
-  weights = ~ wtint2yr
-)
-
-selwt_mod <- svyglm(
-  missing ~ race4 * dmdhrage,
-  design,
-  family = "binomial"
-)
-
-selwt_pred <- predict(selwt_mod, newdata = circ, type = "response")
-selwt_pred <- selwt_pred[seq_len(length(selwt_pred))]
-
-circ[, selwt := fcase(
-         missing == 1, mean(missing) / selwt_pred,
-         missing == 0, (1 - mean(missing)) / (1 - selwt_pred)
-       )][, comb_wt := wtint2yr * selwt]
-
-# combined weight
-comb_design <- svydesign(
-  ids = ~ seqn,
-  data = circ[missing == 0],
-  weights = ~ comb_wt
-)
-
-circ_mod <- svyglm(sxq280 == 1 ~ race4, comb_design, family = "binomial")
-
-rlabs <- c("Black", "Hispanic", "Other", "White")
-
-circ_prob_pred <- predict(
-  circ_mod,
-  newdata = data.frame(race4 = rlabs),
-  type = "response"
-)
-
-circ_prob_pred <- circ_prob_pred[seq_along(circ_prob_pred)]
-circ.probs <- unname(circ_prob_pred)
-names(circ.probs) <- rlabs
-
-
-################################################################################
                         ## INITIALIZE NODE ATTRIBUTES ##
 ################################################################################
 
@@ -425,6 +349,165 @@ mort_rate_annual_popmargin <-
   mort_rates_long[, weighted.mean(rate_percap, jt_prob)]
 
 print(mort_rate_annual_popmargin)
+
+
+################################################################################
+                              ## CIRCUMCISION ##
+################################################################################
+
+library(RNHANES)
+library(survey)
+
+circ_in <- as.data.table(
+  nhanes_load_data("SXQ_I", "2015-2016", demographics = TRUE)
+)
+
+circ <- circ_in[, .(
+  SEQN, DMDHRGND, DMDHRAGE, RIDRETH3,
+  WTINT2YR, SDMVPSU, SDMVSTRA, SXQ280
+)]
+
+names(circ) <- tolower(names(circ))
+
+circ <- circ[dmdhrgnd == 1]
+
+# missing values
+circ[sxq280 %in% c(7, 9), sxq280 := NA]
+circ[sxq280 %in% c(NA, 7, 9), missing := 1]
+circ[sxq280 %in% c(1, 2), missing := 0]
+
+# race/ethnicity recode
+circ[, race4 := fcase(
+         ridreth3 == 3, "White",
+         ridreth3 == 4, "Black",
+         ridreth3 %in% c(1, 2), "Hispanic",
+         ridreth3 %in% c(6, 7), "Other"
+       )]
+
+# selection weight numerator
+design <- svydesign(
+  ids = ~ seqn,
+  data = circ,
+  weights = ~ wtint2yr
+)
+
+selwt_mod <- svyglm(
+  missing ~ race4 * dmdhrage,
+  design,
+  family = "binomial"
+)
+
+selwt_mod_p2 <- svyglm(
+  missing ~ race4 * poly(dmdhrage, 2),
+  design,
+  family = "binomial"
+)
+
+selwt_mod_p3 <- svyglm(
+  missing ~ race4 * poly(dmdhrage, 3),
+  design,
+  family = "binomial"
+)
+
+selwt_mod_s3 <- svyglm(
+  missing ~ race4 * rcs(dmdhrage, 3),
+  design,
+  family = "binomial"
+)
+
+selwt_mod_s5 <- svyglm(
+  missing ~ race4 * rcs(dmdhrage, 5),
+  design,
+  family = "binomial"
+)
+
+AIC(selwt_mod, selwt_mod_p2, selwt_mod_p3, selwt_mod_s3, selwt_mod_s5)
+
+selwt_pred <- predict(selwt_mod_s5, newdata = circ, type = "response")
+selwt_pred <- selwt_pred[seq_len(length(selwt_pred))]
+
+summary(selwt_pred)
+boxplot(selwt_pred)
+
+circ[, selwt := fcase(
+         missing == 1, mean(missing) / selwt_pred,
+         missing == 0, (1 - mean(missing)) / (1 - selwt_pred)
+       )][, comb_wt := wtint2yr * selwt]
+
+# combined weight
+comb_design <- svydesign(
+  ids = ~ seqn,
+  data = circ[missing == 0],
+  weights = ~ comb_wt
+)
+
+circ_mod_pl <- svyglm(
+  sxq280 == 1 ~ race4 * dmdhrage,
+  comb_design,
+  family = "binomial"
+)
+
+circ_mod_p2 <- svyglm(
+  sxq280 == 1 ~ race4 * poly(dmdhrage, 2),
+  comb_design,
+  family = "binomial"
+)
+
+circ_mod_p3 <- svyglm(
+  sxq280 == 1 ~ race4 * poly(dmdhrage, 3),
+  comb_design,
+  family = "binomial"
+)
+
+circ_mod_s3 <- svyglm(
+  sxq280 == 1 ~ race4 * rcs(dmdhrage, 3),
+  comb_design,
+  family = "binomial"
+)
+
+circ_mod_s5 <- svyglm(
+  sxq280 == 1 ~ race4 * rcs(dmdhrage, 5),
+  comb_design,
+  family = "binomial"
+)
+
+### pick poly3 model
+AIC(circ_mod_pl, circ_mod_p2, circ_mod_p3, circ_mod_s3, circ_mod_s5)
+
+rlabs <- c("Black", "Hispanic", "Other", "White")
+nd2 <- data.table(race4 = rlabs[attr_race], dmdhrage = attr_age.yr)
+
+circmods <- ls(pattern = "circ_mod")
+
+circpreds <- lapply(
+  setNames(circmods, circmods),
+  function(.x) {
+    cbind(
+      nd2,
+      as.data.table(predict(get(.x), newdata = nd2, type = "response"))
+    )
+  }) %>% rbindlist(., idcol = "model")
+
+ggplot(
+  circpreds,
+  aes(x = dmdhrage, y = response, color = model, fill = model)
+  ) +
+  geom_line() +
+  ## geom_ribbon(
+  ##   aes(ymin = response - SE, ymax = response + SE),
+  ##   alpha = 0.2, color = "white") +
+  facet_wrap(~ race4) +
+  scale_color_viridis_d() +
+  scale_fill_viridis_d() +
+  theme_base(base_size = 24)
+
+circ_pred_compare <- dcast(
+  circpreds[, .(circ_prob = mean(response)), .(model, race4)],
+  race4 ~ model
+)
+
+circ.probs <- circ_pred_compare[, circ_mod_p3]
+names(circ.probs) <- rlabs
 
 
 ################################################################################
