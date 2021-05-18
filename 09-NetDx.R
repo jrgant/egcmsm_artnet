@@ -6,7 +6,7 @@
 suppressMessages(library(EpiModel))
 est <- readRDS("netest/netest.Rds")
 
-use_ncores <- 16
+use_ncores <- 10
 n_networks <- 10
 n_timesteps <- 52 * 10
 
@@ -15,14 +15,16 @@ n_timesteps <- 52 * 10
 
 main_formation_full <-
   ~ edges +
-    nodefactor("age.grp", levels = NULL) +
-    nodefactor("race", levels = NULL) +
+    nodemix("age.grp", levels = NULL) +
+    nodemix("race", levels = NULL) +
+    ## nodefactor("age.grp", levels = NULL) +
+    ## nodefactor("race", levels = NULL) +
     nodefactor("deg.casl", levels = NULL) +
     nodefactor("diag.status", levels = NULL) +
     degrange(from = 3) +
     concurrent +
-    nodematch("race") +
-    nodematch("age.grp") +
+    ## nodematch("race") +
+    ## nodematch("age.grp") +
     nodematch("diag.status") +
     nodematch("role.class", levels = c(1, 2))
 
@@ -32,7 +34,7 @@ dx_main <- netdx(
   nsteps = n_timesteps,
   ncores = use_ncores,
   skip.dissolution = FALSE,
-  nwstats.formula = main_formation_full
+  nwstats.formula = main_formation_full,
 )
 
 saveRDS(dx_main, "netest/netdx_main.Rds")

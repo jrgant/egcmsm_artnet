@@ -39,7 +39,7 @@ num <- network_size
 
 
 ################################################################################
-                              ## RACE/ETHNICITY ##
+                            ## RACE/ETHNICITY ##
 ################################################################################
 
 # Source: Grey JA, Bernstein KT, Sullivan PS, Kidd SE, Gift TL, Hall EW, et al.
@@ -561,6 +561,16 @@ pred_main_nodematch <- data.table(
   dm = attr_deg.main
 )[dm > 0][, dm := NULL]
 
+## Data frame to use to predict from nodemix models. Includes only agents
+## initialized to have at least 1 main partnership.
+pred_main_nodemix <- data.table(
+  race.i = race_char[attr_race],
+  age.grp.i = attr_age.grp,
+  diag.status.i = attr_diag.status,
+  ptype = 1,
+  dm = attr_deg.main
+)[dm > 0][, dm := NULL]
+
 ## Calculate total number of edges in main network.
 edges_main <- mean(attr_deg.main) * num / 2
 edges_main
@@ -613,6 +623,28 @@ samediag_prob_main <- 1 - predict(
 nodematch_diag.status_main <- mean(samediag_prob_main) * edges_main
 nodematch_diag.status_main
 
+## nodemix_race.eth_main
+racemix_probs_main <- rowMeans(sapply(
+  pdat$mc$racemix,
+  function(.x) {
+    colMeans(predict(.x, newdata = pred_main_nodemix, type = "probs"))
+  }
+))
+
+sum(racemix_probs_main) == 1
+nodemix_race.eth_main <- racemix_probs_main * edges_main
+
+## nodemix_age.grp_main
+agemix_probs_main <- rowMeans(sapply(
+  pdat$mc$agemix,
+  function(.x) {
+    colMeans(predict(.x, newdata = pred_main_nodemix, type = "probs"))
+  }
+))
+
+sum(agemix_probs_main) == 1
+nodemix_age.grp_main <- agemix_probs_main * edges_main
+
 ## Set up prediction data for concurrency term.
 pred_main_conc <- data.table(
   race.cat = race_char,
@@ -648,12 +680,32 @@ durat_wks_main
 
 pred_main_durat[, durat_preds := durat_wks_main_preds]
 
+## average duration by age group (ego population)
 durat_wks_main_byage <-
   pred_main_durat[, .(
     mean_duration = mean(durat_preds)
   ), keyby = ego.age.grp][, mean_duration]
 
 durat_wks_main_byage
+
+## average duratoin by age group combo (within partnership)
+pred_main_durat_byagec <- data.table(
+  age_combo = c(
+    "11", "12", "13", "14", "15",
+    "22", "23", "24", "25", "33",
+    "34", "35",
+    "44", "45",
+    "55"
+  )
+)
+
+durat_wks_main_byagec <- unname(rowMeans(sapply(
+  pdat$main$durat_wks_byagec$analyses,
+  function(.x) predict(.x, newdata = pred_main_durat_byagec, type = "response")
+)))
+
+durat_wks_main_byagec
+
 
 ################################################################################
               ## CASUAL PARTNERSHIPS, NETWORK TARGET STATISTICS ##
@@ -668,6 +720,17 @@ pred_casl_nodematch <- data.table(
   ptype = 2,
   dc = attr_deg.casl
 )[dc > 0][, dc := NULL]
+
+## Data frame to use to predict from nodemix models. Includes only agents
+## initialized to have at least 1 main partnership.
+pred_casl_nodemix <- data.table(
+  race.i = race_char[attr_race],
+  age.grp.i = attr_age.grp,
+  diag.status.i = attr_diag.status,
+  ptype = 2,
+  dc = attr_deg.casl
+)[dc > 0][, dc := NULL]
+
 
 ## Calculate total number of edges in casual network.
 edges_casl <- mean(attr_deg.casl) * num / 2
@@ -721,6 +784,29 @@ samediag_prob_casl <- 1 - predict(
 nodematch_diag.status_casl <- mean(samediag_prob_casl) * edges_casl
 nodematch_diag.status_casl
 
+## nodemix_race.eth_casl
+racemix_probs_casl <- rowMeans(sapply(
+  pdat$mc$racemix,
+  function(.x) {
+    colMeans(predict(.x, newdata = pred_casl_nodemix, type = "probs"))
+  }
+))
+
+sum(racemix_probs_casl) == 1
+nodemix_race.eth_casl <- racemix_probs_casl * edges_casl
+
+## nodemix_age.grp_casl
+agemix_probs_casl <- rowMeans(sapply(
+  pdat$mc$agemix,
+  function(.x) {
+    colMeans(predict(.x, newdata = pred_casl_nodemix, type = "probs"))
+  }
+))
+
+sum(agemix_probs_casl) == 1
+nodemix_age.grp_casl <- agemix_probs_casl * edges_casl
+
+
 ## Set up prediction data for concurrency term.
 pred_casl_conc <- data.table(
   race.cat = race_char,
@@ -756,12 +842,31 @@ durat_wks_casl
 
 pred_casl_durat[, durat_preds := durat_wks_casl_preds]
 
+## casual duration by age group (ego population)
 durat_wks_casl_byage <-
   pred_casl_durat[, .(
     mean_duration = mean(durat_preds)
   ), keyby = ego.age.grp][, mean_duration]
 
 durat_wks_casl_byage
+
+## casual duration by age group combo (per partnership)
+pred_casl_durat_byagec <- data.table(
+  age_combo = c(
+    "11", "12", "13", "14", "15",
+    "22", "23", "24", "25", "33",
+    "34", "35",
+    "44", "45",
+    "55"
+  )
+)
+
+durat_wks_casl_byagec <- unname(rowMeans(sapply(
+  pdat$casl$durat_wks_byagec$analyses,
+  function(.x) predict(.x, newdata = pred_casl_durat_byagec, type = "response")
+)))
+
+durat_wks_casl_byagec
 
 
 ################################################################################
@@ -875,7 +980,6 @@ for (i in seq_len(length(role.class.lvls))) {
 print(out$demog)
 
 # ... NETWORK MODEL TARGETS (MAIN PARTNERSHIPS)
-
 out$netmain <- list()
 out$netmain$edges <- edges_main
 out$netmain$nodefactor_race <- nodefactor_race_main
@@ -885,12 +989,14 @@ out$netmain$nodefactor_diagstatus <- nodefactor_diag.status_main
 out$netmain$nodematch_race <- nodematch_race.eth_main
 out$netmain$nodematch_age.grp <- nodematch_age.grp_main
 out$netmain$nodematch_diagstatus <- nodematch_diag.status_main
+out$netmain$nodemix_race <- nodemix_race.eth_main
+out$netmain$nodemix_age.grp <- nodemix_age.grp_main
 out$netmain$concurrent <- concurrent_main
 out$netmain$durat_wks <- durat_wks_main
 out$netmain$durat_wks_byage <- durat_wks_main_byage
+out$netmain$durat_wks_byagec <- durat_wks_main_byagec
 
 # ... NETWORK MODEL TARGETS (CASUAL PARTNERSHIPS)
-
 out$netcasl <- list()
 out$netcasl$edges <- edges_casl
 out$netcasl$nodefactor_race <- nodefactor_race_casl
@@ -900,9 +1006,12 @@ out$netcasl$nodefactor_diagstatus <- nodefactor_diag.status_casl
 out$netcasl$nodematch_race <- nodematch_race.eth_casl
 out$netcasl$nodematch_age.grp <- nodematch_age.grp_casl
 out$netcasl$nodematch_diagstatus <- nodematch_diag.status_casl
+out$netcasl$nodemix_race <- nodemix_race.eth_casl
+out$netcasl$nodemix_age.grp <- nodemix_age.grp_casl
 out$netcasl$concurrent <- concurrent_casl
 out$netcasl$durat_wks <- durat_wks_casl
 out$netcasl$durat_wks_byage <- durat_wks_casl_byage
+out$netcasl$durat_wks_byagec <- durat_wks_casl_byagec
 
 # ... NETWORK MODEL TARGETS (INSTANTANEOUS PARTNERSHIPS)
 out$netinst <- list()

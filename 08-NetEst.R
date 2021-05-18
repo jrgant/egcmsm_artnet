@@ -44,6 +44,25 @@ nw <- set.vertex.attribute(nw, "role.class", netstats$attr$role.class)
 #   1 for insertive-only agents (coded as 0 in role.class) and
 #   2 for receptive-only agents (coded as 1 in role.class)
 
+# Specification of node mixing terms for age group and race/ethnicity
+#   - These specs drop age groups involving age group 5 (55+) and race/eth
+#     group 4 (white).
+#   - Additionally, nodefactor and nodematch terms are dropped because they
+#     are redundant (and lead to model fit issues) in the presence of the
+#     nodemix terms. The original model specifications are left commented out
+#     for reference.
+
+
+################################################################################
+                            ## REUSABLES ##
+################################################################################
+
+## This function returns a vector of indices for a select target statistc
+## vector, given the target vector and a regex to match in the target stat
+## names. Will only work for nodemix target stats, as other target stat vectors
+## are not named. Used to drop superfluous target stats.
+get_index <- function(vec, val) which(names(vec) %like% val)
+
 
 ################################################################################
                             ## MAIN PARTNERSHIPS ##
@@ -51,28 +70,33 @@ nw <- set.vertex.attribute(nw, "role.class", netstats$attr$role.class)
 
 main_formation <-
   ~ edges +
-    nodefactor("age.grp", levels = I(2:5)) +
-    nodefactor("race", levels = I(2:4)) +
+    nodemix("age.grp", levels = -5) +
+    nodemix("race", levels = -4) +
+    ## nodefactor("age.grp", levels = I(2:5)) +
+    ## nodefactor("race", levels = I(2:4)) +
     nodefactor("deg.casl", levels = I(1:5)) +
     nodefactor("diag.status", levels = I(1)) +
     degrange(from = 3) +
     concurrent +
-    nodematch("race") +
-    nodematch("age.grp") +
+    ## nodematch("race") +
+    ## nodematch("age.grp") +
     nodematch("diag.status") +
     nodematch("role.class", diff = TRUE, levels = c(1, 2))
+
 
 netstats_main <-
   with(netstats$netmain,
     c(edges = edges,
-      nodefactor_age.grp = nodefactor_age.grp[-1],
-      nodefactor_race = nodefactor_race[-1],
+      nodemix_age.grp = nodemix_age.grp[-get_index(nodemix_age.grp, 5)],
+      nodemix_race = nodemix_race[-get_index(nodemix_race, "w")],
+      ## nodefactor_age.grp = nodefactor_age.grp[-1],
+      ## nodefactor_race = nodefactor_race[-1],
       nodefactor_degcasl = nodefactor_degcasl[-1],
       nodefactor_diag.status = nodefactor_diagstatus[-1],
       degrange = 0,
       concurrent = concurrent,
-      nodematch_race = nodematch_race,
-      nodematch_age.grp = nodematch_age.grp,
+      ## #nodematch_race = nodematch_race,
+      ## #nodematch_age.grp = nodematch_age.grp,
       nodematch_diag.status = nodematch_diagstatus,
       nodematch_ai.role = c(0, 0)
 ))
@@ -81,10 +105,12 @@ netstats_main <- unname(netstats_main)
 netstats_main
 
 coef_diss_main <- dissolution_coefs(
-  dissolution = ~offset(edges) + offset(nodefactor("age.grp", levels = I(2:5))),
+  dissolution =
+    ~offset(edges) + offset(nodemix("age.grp", levels = -5)),
   duration = c(
     netstats$netmain$durat_wks,
-    netstats$netmain$durat_wks_byage[-1]
+    netstats$netmain$durat_wks_byagec[
+                       -get_index(netstats$netmain$nodemix_age.grp, 5)]
   ),
   d.rate = netstats$demog$mortrate.marginal
 )
@@ -94,7 +120,9 @@ netest_main <- netest(
   formation = main_formation,
   target.stats = netstats_main,
   coef.diss = coef_diss_main,
-  set.control.ergm = control.ergm(MCMLE.maxit = mcmc.maxiterations)
+  set.control.ergm = control.ergm(
+    MCMLE.maxit = mcmc.maxiterations
+  )
 )
 
 
@@ -104,40 +132,45 @@ netest_main <- netest(
 
 casl_formation <-
   ~ edges +
-    nodefactor("age.grp", levels = I(2:5)) +
-    nodefactor("race", levels = I(2:4)) +
+    nodemix("age.grp", levels = -5) +
+    nodemix("race", levels = -4) +
+    ## nodefactor("age.grp", levels = I(2:5)) +
+    ## nodefactor("race", levels = I(2:4)) +
     nodefactor("deg.main", levels = I(1:2)) +
     nodefactor("diag.status", level = I(1)) +
     degrange(from = 6) +
     concurrent +
-    nodematch("race") +
-    nodematch("age.grp") +
+    ## nodematch("race") +
+    ## nodematch("age.grp") +
     nodematch("diag.status") +
     nodematch("role.class", diff = TRUE, levels = c(1, 2))
 
 netstats_casl <-
   with(netstats$netcasl,
-    c(edges = edges,
-      nodefactor_age.grp = nodefactor_age.grp[-1],
-      nodefactor_race = nodefactor_race[-1],
-      nodefactor_degmain = nodefactor_degmain[-1],
-      nodefactor_diag.status = nodefactor_diagstatus[-1],
-      degrange = 0,
-      concurrent = concurrent,
-      nodematch_race = nodematch_race,
-      nodematch_age.grp = nodematch_age.grp,
-      nodematch_diag.status = nodematch_diagstatus,
-      nodematch_ai.role = c(0, 0)
-))
+       c(edges = edges,
+         nodemix_age.grp = nodemix_age.grp[-get_index(nodemix_age.grp, 5)],
+         nodemix_race = nodemix_race[-get_index(nodemix_race, "w")],
+      ## nodefactor_age.grp = nodefactor_age.grp[-1],
+      ## nodefactor_race = nodefactor_race[-1],
+         nodefactor_degmain = nodefactor_degmain[-1],
+         nodefactor_diag.status = nodefactor_diagstatus[-1],
+         degrange = 0,
+         concurrent = concurrent,
+         ## nodematch_race = nodematch_race,
+         ## nodematch_age.grp = nodematch_age.grp,
+         nodematch_diag.status = nodematch_diagstatus,
+         nodematch_ai.role = c(0, 0)
+         ))
 
 netstats_casl <- unname(netstats_casl)
 print(netstats_casl)
 
 coef_diss_casl <- dissolution_coefs(
-  dissolution = ~offset(edges) + offset(nodefactor("age.grp", levels = I(2:5))),
+  dissolution = ~offset(edges) + offset(nodemix("age.grp", levels = -5)),
   duration = c(
     netstats$netcasl$durat_wks,
-    netstats$netcasl$durat_wks_byage[-1]
+    netstats$netcasl$durat_wks_byage[
+                       -get_index(netstats$netcasl$nodemix_age.grp, 5)]
   ),
   d.rate = netstats$demog$mortrate.marginal
 )

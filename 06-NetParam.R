@@ -47,7 +47,7 @@ cat(
   "Unique egos\n", format(egos, big.mark = ","), "\n\n",
   "Unique main partnerships\n", format(total_main, big.mark = ","), "\n\n",
   "Unique casual partnerships\n", format(total_casl, big.mark = ","), "\n\n",
-  "Overall partnerships\n", format(total_pships, big.mark = ",")
+  "Overall partnerships\n", format(total_pships, big.mark = ","), "\n"
 )
 
 # ongoing main or casual partnerships
@@ -110,6 +110,9 @@ maincas_ong[, .(
   pct_missing_durat = sum(is.na(durat_wks)) / .N
 ), ptype]
 
+
+## Main partnerships (duration by ego characteristics) -------------------------
+
 fit_main_dur <- maincas_ong[
   ptype == 1,
   glm.nb(durat_wks ~ ego.race.cat + factor(ego.age.grp) + factor(hiv2))
@@ -146,7 +149,7 @@ pmdur %>%
   theme_clean()
 
 
-## Casual partnerships
+## Casual partnerships (duration by ego characteristics) -----------------------
 
 fit_casl_dur <- maincas_ong[
   ptype == 2,
@@ -334,6 +337,7 @@ mcdat[, ":=" (
   serodisc = ifelse(hiv.concord == 2, 1, 0)
 )][, sameage := ifelse(age.grp.i == age.grp.j, 1, 0)]
 
+
 mcdat[.imp > 0, .N, keyby = .(race.combo, samerace)]
 mcdat[.imp > 0, .(min = min(age.i), max = max(age.i)), keyby = age.grp.i]
 mcdat[.imp > 0, .(min = min(age.j), max = max(age.j)), keyby = age.grp.j]
@@ -389,6 +393,47 @@ prmatch %>%
 
 
 ################################################################################
+                           ## RACE/ETHNICITY MIXING ##
+################################################################################
+
+mcdat[,
+      race_combo := paste(
+        sort(c(substring(race.i, 1, 1), substring(race.j, 1, 1))),
+        collapse = ""
+      ), by = .(.imp, .id)]
+
+## Check that each race_combo is unique regardless of race.i/.j order.
+mcdat[.imp > 0, .N, keyby = race_combo]
+
+## Instead of using mids object from mice (because multinom fit objects)
+## aren't saved in a way that allows predict() to be used, we fit the 20
+## models in each imputed dataset manually and will get predictions
+## in 07-NetStats.R
+fits_racemix <- lapply(
+  1:20,
+  function(.x) {
+    nnet::multinom(
+      race_combo ~ ptype + race.i + factor(age.grp.i) + factor(diag.status.i),
+      data = mcdat[.imp == .x],
+      subset = age.j >= 18 & age.j <= 65,
+      maxit = 1000
+    )
+  }
+)
+
+## make sure all converaged
+cat("All racemix models converged:",
+    all(sapply(fits_racemix, function(.x) .x$convergence) == 0), "\n")
+
+pred_rmix <- data.table(expand.grid(
+  ptype = 1:2,
+  race.i = mcdat[.imp > 0, sort(unique(race.i))],
+  age.grp.i = 1:5,
+  diag.status.i = 0:1
+))
+
+
+################################################################################
                             ## AGE GROUP MATCHING ##
 ################################################################################
 
@@ -431,6 +476,78 @@ pamatch %>%
   ggtitle("Predicted probability of same-age partnerships") +
   scale_color_viridis_d(option = "magma", end = 0.9) +
   theme_clean()
+
+
+################################################################################
+                              ## AGE GROUP MIXING ##
+################################################################################
+
+## Create factor variable denoting each unique age group combination, where
+## age.grp.i = 1 and age.grp.j = 2 and vice versa would be coded "12".
+mcdat[,
+      age_combo := paste(sort(c(age.grp.i, age.grp.j)), collapse = ""),
+      by = .(.imp, .id)]
+
+mcdat[, .N, keyby = .(.imp, age_combo)]
+
+## Instead of using mids object from mice (because multinom fit objects)
+## aren't saved in a way that allows predict() to be used, we fit the 20
+## models in each imputed dataset manually and will get predictions
+## in 07-NetStats.R
+fits_agemix <- lapply(
+  1:20,
+  function(.x) {
+    nnet::multinom(
+      age_combo ~ ptype + factor(age.grp.i) + race.i + factor(diag.status.i),
+      data = mcdat[.imp == .x],
+      subset = age.j >= 18 & age.j <= 65,
+      maxit = 1000
+    )
+  }
+)
+
+cat("All agemix models converged:",
+    all(sapply(fits_agemix, function(.x) .x$convergence)) == 0, "\n")
+
+
+################################################################################
+           ## PARTNERSHIP DURATIONS BY PTYPE AND AGE GROUP COMBO ##
+################################################################################
+
+# add variable for age group combination
+mcdat[,
+      age_combo := paste0(sort(c(age.grp.i, age.grp.j)), collapse = ""),
+      by = .(.imp, .id)]
+
+mcdat[.imp > 0, .N, keyby = .(.imp, ptype, age_combo)]
+
+imp_mc_age_combo <- as.mids(mcdat)
+
+# Main partnerships ------------------------------------------------------------
+
+fit_main_durat_byac <- with(
+  imp_mc_age_combo,
+  glm.nb(
+    durat_wks ~ age_combo,
+    link = "log",
+    subset = age.j >= 18 & age.j <= 65 & ptype == 1
+  )
+)
+
+fit_main_durat_byac
+
+# Casual partnerships ----------------------------------------------------------
+
+fit_casl_durat_byac <- with(
+  imp_mc_age_combo,
+  glm.nb(
+    durat_wks ~ age_combo,
+    link = "log",
+    subset = age.j >= 18 & age.j <= 65 & ptype == 2
+  )
+)
+
+fit_casl_durat_byac
 
 
 ################################################################################
@@ -1020,19 +1137,23 @@ nparams <- list(
   ),
   mc = list(
     racematch = fit_racematch_out,
+    racemix = fits_racemix,
     age.grpmatch = fit_agematch_out,
+    agemix = fits_agemix,
     hiv.discord = fit_serodisc_out
   ),
   main = list(
     degprob = fit_mdeg,
     concurrent = fit_main_concurrent,
     durat_wks = fit_main_dur,
+    durat_wks_byagecombo = fit_main_durat_byac,
     role.class = fit_mrole
   ),
   casl = list(
     degprob = fit_cdeg,
     concurrent = fit_casl_concurrent,
     durat_wks = fit_casl_dur,
+    durat_wks_byagecombo = fit_casl_durat_byac,
     role.class = fit_crole
   ),
   inst = list(
