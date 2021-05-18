@@ -18,6 +18,10 @@ netstats <- readRDS(here::here("netstats", "netstats.Rds"))
 
 mcmc.maxiterations <- 500
 
+## Tweak the exit rate based on epidemic model simulations that resulted
+## in population sizes close to N = 20,000. We want dissolution rates to
+## reflect that exit rate.
+mort_correct <- 1.285 / 20000
 
 ################################################################################
                             ## NETWORK ESTIMATION ##
@@ -112,7 +116,7 @@ coef_diss_main <- dissolution_coefs(
     netstats$netmain$durat_wks_byagec[
                        -get_index(netstats$netmain$nodemix_age.grp, 5)]
   ),
-  d.rate = netstats$demog$mortrate.marginal
+  d.rate = netstats$demog$mortrate.marginal + mort_correct
 )
 
 netest_main <- netest(
@@ -172,7 +176,7 @@ coef_diss_casl <- dissolution_coefs(
     netstats$netcasl$durat_wks_byage[
                        -get_index(netstats$netcasl$nodemix_age.grp, 5)]
   ),
-  d.rate = netstats$demog$mortrate.marginal
+  d.rate = netstats$demog$mortrate.marginal + mort_correct
 )
 
 netest_casl <- netest(
@@ -180,7 +184,7 @@ netest_casl <- netest(
   formation = casl_formation,
   target.stats = netstats_casl,
   coef.diss = coef_diss_casl,
-  set.control.ergm = control.ergm(MCMLE.maxit = mcmc.maxiterations)
+  set.control.ergm = control.ergm(MCMLE.maxit = mcmc.maxiterations * 6)
 )
 
 
