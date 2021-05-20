@@ -170,10 +170,11 @@ netstats_casl <- unname(netstats_casl)
 print(netstats_casl)
 
 coef_diss_casl <- dissolution_coefs(
-  dissolution = ~offset(edges) + offset(nodemix("age.grp", levels = -5)),
+  dissolution =
+    ~offset(edges) + offset(nodemix("age.grp", levels = -5)),
   duration = c(
     netstats$netcasl$durat_wks,
-    netstats$netcasl$durat_wks_byage[
+    netstats$netcasl$durat_wks_byagec[
                        -get_index(netstats$netcasl$nodemix_age.grp, 5)]
   ),
   d.rate = netstats$demog$mortrate.marginal + mort_correct

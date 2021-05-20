@@ -6,8 +6,8 @@
 suppressMessages(library(EpiModel))
 est <- readRDS("netest/netest.Rds")
 
-use_ncores <- 10
-n_networks <- 10
+use_ncores <- as.numeric(Sys.getenv("SLURM_NPROCS"))
+n_networks <- 50
 n_timesteps <- 52 * 10
 
 
@@ -38,19 +38,23 @@ dx_main <- netdx(
 )
 
 saveRDS(dx_main, "netest/netdx_main.Rds")
+dx_main <- NULL
+gc()
 
 # %% CASUAL PARTNERSHIPS -------------------------------------------------------
 
 casl_formation_full <-
   ~ edges +
-    nodefactor("age.grp", levels = NULL) +
-    nodefactor("race", levels = NULL) +
+    nodemix("age.grp", levels = NULL) +
+    nodemix("race", levels = NULL) +
+    ## nodefactor("age.grp", levels = NULL) +
+    ## nodefactor("race", levels = NULL) +
     nodefactor("deg.main", levels = NULL) +
     nodefactor("diag.status", levels = NULL) +
     degrange(from = 6) +
     concurrent +
-    nodematch("race", levels = NULL) +
-    nodematch("age.grp") +
+    ## nodematch("race", levels = NULL) +
+    ## nodematch("age.grp") +
     nodematch("diag.status") +
     nodematch("role.class", levels = c(1, 2))
 
@@ -64,6 +68,9 @@ dx_casl <- netdx(
 )
 
 saveRDS(dx_casl, "netest/netdx_casl.Rds")
+dx_casl <- NULL
+gc()
+
 
 # %% ONE-TIME CONTACTS ---------------------------------------------------------
 
@@ -87,6 +94,9 @@ dx_inst <- netdx(
 )
 
 saveRDS(dx_inst, "netest/netdx_inst.Rds")
+dx_inst <- NULL
+gc()
+
 
 # %% PLOT SIMULATED NETWORKS ---------------------------------------------------
 
