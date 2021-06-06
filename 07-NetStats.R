@@ -633,6 +633,7 @@ racemix_probs_main <- rowMeans(sapply(
 
 sum(racemix_probs_main) == 1
 nodemix_race.eth_main <- racemix_probs_main * edges_main
+sum(nodemix_race.eth_main) == edges_main
 
 ## nodemix_age.grp_main
 agemix_probs_main <- rowMeans(sapply(
@@ -644,6 +645,7 @@ agemix_probs_main <- rowMeans(sapply(
 
 sum(agemix_probs_main) == 1
 nodemix_age.grp_main <- agemix_probs_main * edges_main
+sum(nodemix_age.grp_main) == edges_main
 
 ## Set up prediction data for concurrency term.
 pred_main_conc <- data.table(
@@ -692,8 +694,8 @@ durat_wks_main_byage
 pred_main_durat_byagec <- data.table(
   age_combo = c(
     "11", "12", "13", "14", "15",
-    "22", "23", "24", "25", "33",
-    "34", "35",
+    "22", "23", "24", "25",
+    "33", "34", "35",
     "44", "45",
     "55"
   )
