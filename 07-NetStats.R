@@ -4,7 +4,7 @@
 
 pacman::p_load(
   data.table,
-  EpiModelHIV,
+  EpiModelHIVxgc,
   readxl,
   magrittr,
   ggplot2,
@@ -355,7 +355,7 @@ print(mort_rate_annual_popmargin)
                               ## CIRCUMCISION ##
 ################################################################################
 
-library(RNHANES)
+library(RNHANES) # need to install from Github, otherwise validate_year() fails
 library(survey)
 
 circ_in <- as.data.table(
@@ -429,10 +429,20 @@ selwt_pred <- selwt_pred[seq_len(length(selwt_pred))]
 summary(selwt_pred)
 boxplot(selwt_pred)
 
+selwt_mod_num <- svyglm(missing ~ race4, design, family = "quasibinomial")
+selwt_pred_num <- predict(selwt_mod_num, newdata = circ, type = "response")
+selwt_pred_num <- selwt_pred_num[seq_len(length(selwt_pred_num))]
+
+
 circ[, selwt := fcase(
          missing == 1, mean(missing) / selwt_pred,
          missing == 0, (1 - mean(missing)) / (1 - selwt_pred)
        )][, comb_wt := wtint2yr * selwt]
+
+circ[, selwt := fcase(
+         missing == 1, selwt_pred_num / selwt_pred,
+         missing == 0, (1 - selwt_pred_num) / (1 - selwt_pred)
+       )][, comb_wt_numcd := wtint2yr * selwt]
 
 # combined weight
 comb_design <- svydesign(
