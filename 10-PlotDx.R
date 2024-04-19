@@ -9,15 +9,53 @@ dx <- list(
   readRDS("netest/netdx_inst.Rds")
 )
 
-plotdx <- function(network, color = "skyblue") {
-  nt <- c("main", "casual", "inst")
-  plot(dx[[grep(network, nt)]], qnts = 0.95, sim.col = color)
+main <- melt(as.data.table(get_nwstats(dx[[1]])), id.vars = c("time", "sim"))
+casl <- melt(as.data.table(get_nwstats(dx[[2]])), id.vars = c("time", "sim"))
+# inst <- melt(as.data.table(get_nwstats(dx[[3]])), id.vars = c("time", "sim"))
+
+main_targs <- as.data.table(dx[[1]]$target.stats)
+casl_targs <- as.data.table(dx[[2]]$target.stats)
+# inst_targs <- as.data.table(dx[[3]]$target.stats)
+
+setnames(main_targs, "names", "variable")
+setnames(casl_targs, "names", "variable")
+# setnames(inst_targs, "names", "variable")
+
+plotnet <- function(data, targ) {
+  data %>%
+    ggplot(aes(x = time, y = value)) +
+    geom_line(
+      aes(group = sim),
+      alpha = 0.2,
+      color = "firebrick"
+    ) +
+    geom_hline(
+      data = targ,
+      aes(yintercept = targets),
+      linetype = "dashed",
+      size = 1
+    ) +
+    facet_wrap(
+      ~ variable,
+      scales = "free_y"
+    ) +
+    theme_few(base_size = 9)
 }
 
-plotdx("main")
-plotdx("casual")
-plotdx("inst")
+mplot <- plotnet(main, main_targs)
+cplot <- plotnet(casl, casl_targs)
+# iplot <- plotnet(inst, inst_targs)
 
-plot(dx[[1]], sim.lines = TRUE)
-plot(dx[[2]], sim.lines = TRUE)
-plot(dx[[3]], sim.lines = TRUE)
+ggsave(
+  "plotdx_main.png",
+  mplot,
+  width = 10,
+  height = 7
+)
+
+ggsave(
+  "plotdx_casl.png",
+  cplot,
+  width = 10,
+  height = 7
+)

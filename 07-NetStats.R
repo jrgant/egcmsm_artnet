@@ -441,6 +441,12 @@ comb_design <- svydesign(
   weights = ~ comb_wt
 )
 
+comb_design_num <- svydesign(
+  ids = ~ seqn,
+  data = circ[missing == 0],
+  weights = ~ comb_wt_numcd
+)
+
 circ_mod_pl <- svyglm(
   sxq280 == 1 ~ race4 * dmdhrage,
   comb_design,

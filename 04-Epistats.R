@@ -607,7 +607,7 @@ check_pooled_fit(oi_once, pred_oionce)
 
 ## Select a model with which to seed the population. Because HIV diagnosis
 ## status in the seeded population is used to calculate network target
-## statistics, we should ## aim for an accurate enough seed diagnosis prevalence
+## statistics, we should aim for an accurate enough seed diagnosis prevalence
 ## so that those network statistics are well-estimated.
 
 hiv_matchrole <- anl[, .(id, role.class = ego.anal.role)]

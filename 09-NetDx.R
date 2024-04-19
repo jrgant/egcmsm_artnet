@@ -3,7 +3,11 @@
 suppressMessages(library(EpiModel))
 est <- readRDS("netest/netest.Rds")
 
-ncores_avail <- as.numeric(Sys.getenv("SLURM_NPROCS"))
+if (Sys.getenv("SLURM_NPROCS") == "") {
+  ncores_avail <- 6
+} else {
+  ncores_avail <- as.numeric(Sys.getenv("SLURM_NPROCS"))
+}
 
 ## Wrapper around netdx.
 run_netdx <- function(nw_est, n_networks = 50, n_timesteps = 52 * 60,
