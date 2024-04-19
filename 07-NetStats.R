@@ -394,31 +394,31 @@ design <- svydesign(
 selwt_mod <- svyglm(
   missing ~ race4 * dmdhrage,
   design,
-  family = "binomial"
+  family = "quasibinomial"
 )
 
 selwt_mod_p2 <- svyglm(
   missing ~ race4 * poly(dmdhrage, 2),
   design,
-  family = "binomial"
+  family = "quasibinomial"
 )
 
 selwt_mod_p3 <- svyglm(
   missing ~ race4 * poly(dmdhrage, 3),
   design,
-  family = "binomial"
+  family = "quasibinomial"
 )
 
 selwt_mod_s3 <- svyglm(
   missing ~ race4 * rcs(dmdhrage, 3),
   design,
-  family = "binomial"
+  family = "quasibinomial"
 )
 
 selwt_mod_s5 <- svyglm(
   missing ~ race4 * rcs(dmdhrage, 5),
   design,
-  family = "binomial"
+  family = "quasibinomial"
 )
 
 AIC(selwt_mod, selwt_mod_p2, selwt_mod_p3, selwt_mod_s3, selwt_mod_s5)
@@ -460,31 +460,31 @@ comb_design_num <- svydesign(
 circ_mod_pl <- svyglm(
   sxq280 == 1 ~ race4 * dmdhrage,
   comb_design,
-  family = "binomial"
+  family = "quasibinomial"
 )
 
 circ_mod_p2 <- svyglm(
   sxq280 == 1 ~ race4 * poly(dmdhrage, 2),
   comb_design,
-  family = "binomial"
+  family = "quasibinomial"
 )
 
 circ_mod_p3 <- svyglm(
   sxq280 == 1 ~ race4 * poly(dmdhrage, 3),
   comb_design,
-  family = "binomial"
+  family = "quasibinomial"
 )
 
 circ_mod_s3 <- svyglm(
   sxq280 == 1 ~ race4 * rcs(dmdhrage, 3),
   comb_design,
-  family = "binomial"
+  family = "quasibinomial"
 )
 
 circ_mod_s5 <- svyglm(
   sxq280 == 1 ~ race4 * rcs(dmdhrage, 5),
   comb_design,
-  family = "binomial"
+  family = "quasibinomial"
 )
 
 ### pick poly3 model
