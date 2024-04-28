@@ -31,15 +31,15 @@ mort_correct <- 1.285 / 20000
 suppressMessages(library("EpiModelHIVxgc"))
 
 # Initialize network
-nw <- network.initialize(netstats$demog$num, directed = FALSE)
-nw <- set.vertex.attribute(nw, "race", netstats$attr$race)
-nw <- set.vertex.attribute(nw, "age", netstats$attr$age)
-nw <- set.vertex.attribute(nw, "age.wk", netstats$attr$age.wk)
-nw <- set.vertex.attribute(nw, "age.grp", netstats$attr$age.grp)
-nw <- set.vertex.attribute(nw, "diag.status", netstats$attr$diag.status)
-nw <- set.vertex.attribute(nw, "deg.main", netstats$attr$deg.main)
-nw <- set.vertex.attribute(nw, "deg.casl", netstats$attr$deg.casl)
-nw <- set.vertex.attribute(nw, "role.class", netstats$attr$role.class)
+nw <- EpiModel::network_initialize(netstats$demog$num)
+nw <- EpiModel::set_vertex_attribute(nw, "race", netstats$attr$race)
+nw <- EpiModel::set_vertex_attribute(nw, "age", netstats$attr$age)
+nw <- EpiModel::set_vertex_attribute(nw, "age.wk", netstats$attr$age.wk)
+nw <- EpiModel::set_vertex_attribute(nw, "age.grp", netstats$attr$age.grp)
+nw <- EpiModel::set_vertex_attribute(nw, "diag.status", netstats$attr$diag.status)
+nw <- EpiModel::set_vertex_attribute(nw, "deg.main", netstats$attr$deg.main)
+nw <- EpiModel::set_vertex_attribute(nw, "deg.casl", netstats$attr$deg.casl)
+nw <- EpiModel::set_vertex_attribute(nw, "role.class", netstats$attr$role.class)
 
 
 # %% NOTE ------------------------------------------------------------------
@@ -59,7 +59,7 @@ nw <- set.vertex.attribute(nw, "role.class", netstats$attr$role.class)
 
 
 ################################################################################
-               ## MAIN PARTNERSHIPS: FORMULAE AND TARGET STATS ##
+               ## MAIN PARTNERSHIPS: FORMULAS AND TARGET STATS ##
 ################################################################################
 
 main_formation <- ~ edges +
@@ -97,7 +97,7 @@ coef_diss_main <- dissolution_coefs(
 
 
 ################################################################################
-              ## CASUAL PARTNERSHIPS: FORMULAE AND TARGET STATS ##
+              ## CASUAL PARTNERSHIPS: FORMULAS AND TARGET STATS ##
 ################################################################################
 
 casl_formation <- ~ edges +
@@ -171,7 +171,7 @@ coef_diss_inst <- dissolution_coefs(
 ################################################################################
 
 # List model components in order of: main, casl, inst
-formation_formulae <- c("main_formation", "casl_formation", "inst_formation")
+formation_formulas <- c("main_formation", "casl_formation", "inst_formation")
 target_stats <- c("netstats_main", "netstats_casl", "netstats_inst")
 dissolution_coef_fits <- c("coef_diss_main", "coef_diss_casl", "coef_diss_inst")
 model_names <- c("fit_main", "fit_casl", "fit_inst")
@@ -184,7 +184,7 @@ registerDoParallel(cores = 3)
 netest_out <- foreach(i = 1:3, .inorder = FALSE) %dopar% {
   netest(
     nw = nw,
-    formation = get(formation_formulae[i]),
+    formation = get(formation_formulas[i]),
     target.stats = get(target_stats[i]),
     coef.diss = get(dissolution_coef_fits[i]),
     set.control.ergm = control.ergm(MCMLE.maxit = mcmc.maxiterations)
