@@ -8,7 +8,8 @@ pacman::p_load(
   summarytools,
   stringr,
   foreach,
-  doParallel
+  doParallel,
+  EpiModel
 )
 
 netstats <- readRDS(here::here("netstats", "netstats.Rds"))
@@ -27,8 +28,6 @@ mort_correct <- 1.285 / 20000
 ################################################################################
                             ## NETWORK ESTIMATION ##
 ################################################################################
-
-suppressMessages(library("EpiModelHIVxgc"))
 
 # Initialize network
 nw <- EpiModel::network_initialize(netstats$demog$num)
@@ -57,6 +56,7 @@ age_mix_order <- c("1.2", "2.2",
 race_mix_order <- c("1.2", "2.2",
                     "1.3", "2.3", "3.3",
                     "1.4", "2.4", "3.4", "4.4")
+
 
 ################################################################################
                ## MAIN PARTNERSHIPS: FORMULAS AND TARGET STATS ##
@@ -189,7 +189,7 @@ mcmc.maxiterations <- 500
 # Fit models in parallel
 registerDoParallel(cores = 3)
 netest_out <- foreach(i = 1:3, .inorder = FALSE) %dopar% {
-  netest(
+  EpiModel::netest(
     nw = nw,
     formation = get(formation_formulas[i]),
     target.stats = get(target_stats[i]),
