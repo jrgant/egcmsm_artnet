@@ -171,10 +171,11 @@ coef_diss_inst <- dissolution_coefs(
 ################################################################################
 
 # List model components in order of: main, casl, inst
-formation_formulas <- c("main_formation", "casl_formation", "inst_formation")
-target_stats <- c("netstats_main", "netstats_casl", "netstats_inst")
-dissolution_coef_fits <- c("coef_diss_main", "coef_diss_casl", "coef_diss_inst")
-model_names <- c("fit_main", "fit_casl", "fit_inst")
+nwlabs                  <- c("main", "casl", "inst")
+formation_formulas      <- paste0(nwlabs, "_formation")
+target_stats            <- paste0("netstats_", nwlabs)
+dissolution_coef_fits   <- paste0("coef_diss_", nwlabs)
+model_names             <- paste0("fit_", nwlabs)
 
 # Set maximumn number of MCMC iterations
 mcmc.maxiterations <- 500
