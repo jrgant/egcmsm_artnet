@@ -10,7 +10,7 @@ if (Sys.getenv("SLURM_NPROCS") == "") {
 }
 
 ## Wrapper around netdx.
-run_netdx <- function(nw_est, n_networks = 50, n_timesteps = 52 * 60,
+run_netdx <- function(nw_est, n_networks = 100, n_timesteps = 52 * 10,
                       use_ncores = ncores_avail, formation_fml,
                       dynset = TRUE) {
   netdx(
@@ -24,14 +24,14 @@ run_netdx <- function(nw_est, n_networks = 50, n_timesteps = 52 * 60,
     skip.dissolution = FALSE,
     nwstats.formula = formation_fml,
   )
-} 
+}
 
 
 # %% MAIN PARTNERSHIPS ---------------------------------------------------------
 
 main_formation_full <- ~ edges +
-  nodemix("age.grp", levels = NULL) +
-  nodemix("race", levels = NULL) +
+  nodemix("age.grp", levels = NULL, levels2 = NULL) +
+  nodemix("race", levels = NULL, levels2 = NULL) +
   nodefactor("deg.casl", levels = NULL) +
   nodefactor("diag.status", levels = NULL) +
   degrange(from = 3) +
@@ -52,8 +52,8 @@ gc()
 # %% CASUAL PARTNERSHIPS -------------------------------------------------------
 
 casl_formation_full <- ~ edges +
-  nodemix("age.grp", levels = NULL) +
-  nodemix("race", levels = NULL) +
+  nodemix("age.grp", levels = NULL, levels2 = NULL) +
+  nodemix("race", levels = NULL, levels2 = NULL) +
   nodefactor("deg.main", levels = NULL) +
   nodefactor("diag.status", levels = NULL) +
   degrange(from = 6) +

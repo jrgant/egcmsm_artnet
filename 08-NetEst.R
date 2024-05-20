@@ -8,7 +8,8 @@ pacman::p_load(
   summarytools,
   stringr,
   foreach,
-  doParallel
+  doParallel,
+  EpiModel
 )
 
 netstats <- readRDS(here::here("netstats", "netstats.Rds"))
@@ -21,14 +22,12 @@ netstats <- readRDS(here::here("netstats", "netstats.Rds"))
 ## Tweak the exit rate based on epidemic model simulations that resulted
 ## in population sizes close to N = 20,000. We want dissolution rates to
 ## reflect that exit rate.
-mort_correct <- 1.285 / 20000
+mort_correct <- 1.285 / netstats$demog$num
 
 
 ################################################################################
                             ## NETWORK ESTIMATION ##
 ################################################################################
-
-suppressMessages(library("EpiModelHIVxgc"))
 
 # Initialize network
 nw <- EpiModel::network_initialize(netstats$demog$num)
@@ -42,20 +41,21 @@ nw <- EpiModel::set_vertex_attribute(nw, "deg.casl", netstats$attr$deg.casl)
 nw <- EpiModel::set_vertex_attribute(nw, "role.class", netstats$attr$role.class)
 
 
-# %% NOTE ------------------------------------------------------------------
+################################################################################
+## MIXING TERM ORDERING ##
+################################################################################
 
-# Role class coding in model formulas:
-#   The levels argument in nodematch("role.class") indicates
-#   1 for insertive-only agents (coded as 0 in role.class) and
-#   2 for receptive-only agents (coded as 1 in role.class)
+## Specify the order of the mixing target statistics (lexicographic order)
+## Remember that age and race group labels, while numeric, indicate nominal
+## categories.
+age_mix_order <- c("1.2", "2.2",
+                   "1.3", "2.3", "3.3",
+                   "1.4", "2.4", "3.4", "4.4",
+                   "1.5", "2.5", "3.5", "4.5", "5.5")
 
-# Specification of node mixing terms for age group and race/ethnicity
-#   - These specs drop age groups involving age group 5 (55+) and race/eth
-#     group 4 (white).
-#   - Additionally, nodefactor and nodematch terms are dropped because they
-#     are redundant (and lead to model fit issues) in the presence of the
-#     nodemix terms. The original model specifications are left commented out
-#     for reference.
+race_mix_order <- c("1.2", "2.2",
+                    "1.3", "2.3", "3.3",
+                    "1.4", "2.4", "3.4", "4.4")
 
 
 ################################################################################
@@ -75,8 +75,8 @@ main_formation <- ~ edges +
 
 netstats_main <- with(netstats$netmain, c(
   edges = edges,
-  mix.age.grp = nodemix_age.grp[-1],
-  mix.race = nodemix_race[-1],
+  mix.age.grp = nodemix_age.grp[-1][match(age_mix_order, names(nodemix_age.grp[-1]))],
+  mix.race = nodemix_race[-1][match(race_mix_order, names(nodemix_race[-1]))],
   nodefactor.deg.casl = nodefactor_degcasl[-1],
   nodefactor.diag.status = nodefactor_diagstatus[-1],
   `deg3+` = 0,
@@ -85,13 +85,16 @@ netstats_main <- with(netstats$netmain, c(
   nodematch.role.class = c("0" = 0, "1" = 0)
 ))
 
-#netstats_main <- unname(netstats_main)
+netstats_main <- unname(netstats_main)
 netstats_main
 
 coef_diss_main <- dissolution_coefs(
   dissolution = ~offset(edges) + offset(nodemix("age.grp")),
-  duration = c(netstats$netmain$durat_wks,
-               netstats$netmain$durat_wks_byagec[-1]),
+  duration = c(
+    netstats$netmain$durat_wks,
+    with(netstats$netmain,
+         durat_wks_byagec[-1][match(age_mix_order, names(durat_wks_byagec[-1]))])
+  ),
   d.rate = netstats$demog$mortrate.marginal + mort_correct
 )
 
@@ -112,8 +115,8 @@ casl_formation <- ~ edges +
 
 netstats_casl <- with(netstats$netcasl, c(
   edges = edges,
-  mix.age.grp = nodemix_age.grp[-1],
-  mix.race = nodemix_race[-1],
+  mix.age.grp = nodemix_age.grp[-1][match(age_mix_order, names(nodemix_age.grp[-1]))],
+  mix.race = nodemix_race[-1][match(race_mix_order, names(nodemix_race[-1]))],
   nodefactor.deg.main = nodefactor_degmain[-1],
   nodefactor.diag.status = nodefactor_diagstatus[-1],
   `deg6+` = 0,
@@ -122,6 +125,7 @@ netstats_casl <- with(netstats$netcasl, c(
   nodematch.role.class = c("0" = 0, "1" = 0)
 ))
 
+netstats_casl <- unname(netstats_casl)
 netstats_casl
 
 coef_diss_casl <- dissolution_coefs(
@@ -129,7 +133,8 @@ coef_diss_casl <- dissolution_coefs(
     ~offset(edges) + offset(nodemix("age.grp")),
   duration = c(
     netstats$netcasl$durat_wks,
-    netstats$netcasl$durat_wks_byagec[-1]
+    with(netstats$netcasl,
+         durat_wks_byagec[-1][match(age_mix_order, names(durat_wks_byagec[-1]))])
   ),
   d.rate = netstats$demog$mortrate.marginal + mort_correct
 )
@@ -157,6 +162,7 @@ netstats_inst <- with(netstats$netinst, c(
   nodematch.role.class = c("0" = 0, "1" = 0)
 ))
 
+netstats_inst <- unname(netstats_inst)
 netstats_inst
 
 coef_diss_inst <- dissolution_coefs(
@@ -183,7 +189,7 @@ mcmc.maxiterations <- 500
 # Fit models in parallel
 registerDoParallel(cores = 3)
 netest_out <- foreach(i = 1:3, .inorder = FALSE) %dopar% {
-  netest(
+  EpiModel::netest(
     nw = nw,
     formation = get(formation_formulas[i]),
     target.stats = get(target_stats[i]),
