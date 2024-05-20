@@ -22,7 +22,7 @@ netstats <- readRDS(here::here("netstats", "netstats.Rds"))
 ## Tweak the exit rate based on epidemic model simulations that resulted
 ## in population sizes close to N = 20,000. We want dissolution rates to
 ## reflect that exit rate.
-mort_correct <- 1.285 / 20000
+mort_correct <- 1.285 / netstats$demog$num
 
 
 ################################################################################
